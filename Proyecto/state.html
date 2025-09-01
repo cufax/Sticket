@@ -1,0 +1,41 @@
+<script>
+    // ===============================================================
+    // 1. ESTADO GLOBAL DE LA APLICACIÓN (SINGLE SOURCE OF TRUTH)
+    // ===============================================================
+    let state = {
+        userProfile: { email: null, role: null },
+        tickets: [],
+        allTicketsForStats: [],
+        allPlanillas: [],
+        allCreators: [],
+        allSuperiores: [],
+        comments: {},
+        notifications: [],
+        currentView: 'dashboard',
+        isDarkMode: () => document.body.classList.contains('dark-mode'),
+        isMyTicketsFilterActive: true,
+        pagination: {
+            currentPage: 1,
+            pageSize: 10,
+            totalTickets: 0,
+            totalPages: 0
+        },
+        filters: {
+            searchQuery: '',
+            status: '',
+            tool: '',
+            motivoEscalamiento: '',
+            createdBy: '',
+            equipo: '',
+            startDate: '',
+            endDate: '',
+            priority: ''
+        },
+        sort: {
+            column: 'Timestamp',
+            direction: 'desc'
+        },
+        motivosOperativos: [],
+        lastReportData: null
+    };
+</script>
