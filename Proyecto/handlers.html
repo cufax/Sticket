@@ -1,5 +1,5 @@
 <script>
-    // ===============================================================
+  // ===============================================================
     // 6. HANDLERS (Manejadores de Eventos)
     // ===============================================================
     /**
@@ -89,8 +89,8 @@
                     LoadingManager.hide();
                     if (response.status === 'success') {
                         // ----> ESTA ES LA LÍNEA CRÍTICA QUE SE AÑADE <----
-                        state.lastReportData = response.data;
-
+                        state.lastReportData = response.data; 
+                        
                         UI.renderCustomReport(response.data, reportConfig.chartType);
                     } else {
                         UI.handleError(new Error(response.message || 'Error al generar el reporte.'));
@@ -448,6 +448,104 @@
         },
 
         /**
+         * Maneja el envío del formulario de solicitud de GBs.
+         * @param {Event} event - El evento de submit del formulario.
+         */
+        handleGbRequestSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+
+            let isValid = true;
+            const requiredFields = ['usuario', 'idGestion', 'numeroContrato', 'numeroLinea', 'motivo'];
+
+            requiredFields.forEach(fieldId => {
+                const input = form.elements[fieldId];
+                if (input && input.value.trim() === '') {
+                    input.classList.add('is-invalid');
+                    isValid = false;
+                } else {
+                    input.classList.remove('is-invalid');
+                }
+            });
+
+            const smsInputs = form.querySelectorAll('input[name="smsBackup"]');
+            if (![...smsInputs].some(r => r.checked)) {
+                smsInputs.forEach(r => r.classList.add('is-invalid'));
+                isValid = false;
+            } else {
+                smsInputs.forEach(r => r.classList.remove('is-invalid'));
+            }
+
+            if (!isValid) {
+                UI.showAlert('alertPlaceholderGb', 'Por favor, completa todos los campos obligatorios.', 'danger');
+                return;
+            }
+
+            Swal.fire({
+                title: '¿Estás seguro?',
+                text: 'La solicitud será enviada para su procesamiento.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Sí, ¡enviar!',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const button = document.getElementById('submitGbButton');
+                    UI.toggleButtonSpinner(button, true);
+
+                    const onSuccess = (response) => {
+                        UI.toggleButtonSpinner(button, false);
+                        if (response.status === 'success') {
+                            Swal.fire('¡Enviado!', 'La solicitud ha sido registrada.', 'success');
+                            bootstrap.Modal.getInstance(document.getElementById('modalSolicitarGbs')).hide();
+                            form.reset();
+                            form.classList.remove('was-validated');
+                        } else {
+                            UI.showAlert('alertPlaceholderGb', response.message || 'Ocurrió un error desconocido.', 'danger');
+                        }
+                    };
+
+                    const onFailure = (error) => {
+                        UI.toggleButtonSpinner(button, false);
+                        UI.handleError(error);
+                        UI.showAlert('alertPlaceholderGb', error.message, 'danger');
+                    };
+
+                    const formData = {
+                        usuario: form.elements['usuario'].value,
+                        idGestion: form.elements['idGestion'].value,
+                        numeroContrato: form.elements['numeroContrato'].value,
+                        numeroLinea: form.elements['numeroLinea'].value,
+                        smsBackup: form.elements['smsBackup'].value,
+                        motivo: form.elements['motivo'].value
+                    };
+
+                    API.runServerFunction('submitGbRequest', formData, onSuccess, onFailure);
+                }
+            });
+        },
+
+        /**
+         * Maneja el cambio en la casilla de revisión de solicitudes de GBs.
+         */
+        handleGbAuditCheckboxChange(event) {
+            const checkbox = event.target;
+            const row = parseInt(checkbox.dataset.row, 10);
+            const revisado = checkbox.checked;
+            API.runServerFunction('updateGbRequestAuditStatus', { rowNumber: row, revisado }, response => {
+                if (response.status !== 'success') {
+                    UI.handleError(new Error(response.message || 'Error al actualizar.'));
+                    checkbox.checked = !revisado;
+                }
+            }, error => {
+                UI.handleError(error);
+                checkbox.checked = !revisado;
+            });
+        },
+
+        /**
          * @description Maneja la actualización de observaciones de un ticket.
          * @param {string} ticketId - El ID del ticket.
          * @param {string} newObservations - Las nuevas observaciones.
@@ -742,22 +840,73 @@
                 form.classList.remove('was-validated');
                 form.reset();
                 // Limpiar clases de validación manuales
-                const requiredFields = [
-                    'usuario', 'casoYoizen', 'herramienta', 'planilla', 'motivoEscalamiento', 'idDerivacion'
-                ];
-                requiredFields.forEach(fieldId => {
-                    const input = form.elements[fieldId];
-                    if (input) input.classList.remove('is-invalid');
-                });
+                form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
             }
 
             const placeholder = event.target.querySelector('[id^="alertPlaceholder"]');
             if (placeholder) {
                 placeholder.innerHTML = '';
             }
-
             if (event.target.id === 'modalMetricasUsuario') {
                 UI.renderUserMetricsModal(true); // true para indicar que es el modal
+            }
+        },
+
+        /**
+         * @description Captura imágenes pegadas en el modal de nuevo ticket y las asigna al input de adjunto.
+         * @param {ClipboardEvent} event - El evento de pegado.
+         */
+        handlePasteAttachment(event) {
+            const modal = document.getElementById('modalNuevoTicket');
+            if (!modal || !modal.classList.contains('show')) return;
+
+            const items = event.clipboardData?.items;
+            if (!items) return;
+
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (file) {
+                        const fileInput = document.getElementById('capturaFile');
+                        if (fileInput) {
+                            const dataTransfer = new DataTransfer();
+                            dataTransfer.items.add(file);
+                            fileInput.files = dataTransfer.files;
+                            fileInput.dispatchEvent(new Event('change'));
+                        }
+                    }
+                    event.preventDefault();
+                    break;
+                }
+            }
+        },
+
+        /**
+         * @description Captura imágenes pegadas en el modal de nuevo ticket y las asigna al input de adjunto.
+         * @param {ClipboardEvent} event - El evento de pegado.
+         */
+        handlePasteAttachment(event) {
+            const modal = document.getElementById('modalNuevoTicket');
+            if (!modal || !modal.classList.contains('show')) return;
+
+            const items = event.clipboardData?.items;
+            if (!items) return;
+
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (file) {
+                        const fileInput = document.getElementById('capturaFile');
+                        if (fileInput) {
+                            const dataTransfer = new DataTransfer();
+                            dataTransfer.items.add(file);
+                            fileInput.files = dataTransfer.files;
+                            fileInput.dispatchEvent(new Event('change'));
+                        }
+                    }
+                    event.preventDefault();
+                    break;
+                }
             }
         },
 
@@ -853,6 +1002,34 @@
                     }
                 });
             };
+        },
+
+        /**
+         * @description Maneja el envío de una solicitud de GBs y refresca el historial al completar.
+         * @param {object} formData - Datos de la solicitud de GB.
+         */
+        handleGbRequestSubmit(formData) {
+            const submitBtn = document.getElementById('gb-request-submit-btn');
+            UI.toggleButtonSpinner(submitBtn, true);
+
+            API.runServerFunction('submitGbRequest', formData,
+                response => {
+                    UI.toggleButtonSpinner(submitBtn, false);
+
+                    if (response && response.status === 'success') {
+                        // Disparar evento para que otras partes puedan reaccionar
+                        document.dispatchEvent(new CustomEvent('gbRequestSubmitted'));
+                        // Re-renderizar el historial inmediatamente
+                        UI.renderGbRequestsHistory();
+                    } else {
+                        UI.showAlert('gb-request-alert', response?.message || 'Error al registrar la solicitud.', 'danger');
+                    }
+                },
+                error => {
+                    UI.toggleButtonSpinner(submitBtn, false);
+                    UI.handleError(error);
+                }
+            );
         },
 
         /**
