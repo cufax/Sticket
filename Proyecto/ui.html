@@ -1,5 +1,5 @@
 <script>
-    // ===============================================================
+  // ===============================================================
     // 5. UI (Manipulación del DOM)
     // ===============================================================
 
@@ -72,9 +72,9 @@
             const container = document.getElementById('report-chart-container');
             const downloadBtn = document.getElementById('download-pdf-btn');
             if (!container || !downloadBtn) return;
-
+            
             container.innerHTML = ''; // Limpiar el contenedor
-
+            
             if (!reportData || reportData.labels.length === 0) {
                 container.innerHTML = `
                     <div class="report-placeholder">
@@ -91,10 +91,10 @@
                 data: reportData.data,
                 backgroundColor: reportData.labels.map((_, i) => `hsl(${i * 60}, 70%, 60%)`)
             };
-
+            
             // El título se pondrá en el PDF, no es necesario aquí para tener más espacio
-            this.renderD3Chart('report-chart-container', d3ChartData, chartType, '');
-
+            this.renderD3Chart('report-chart-container', d3ChartData, chartType, ''); 
+            
             downloadBtn.style.display = 'block'; // Mostrar botón de descarga
         },
 
@@ -140,7 +140,7 @@
 
             fieldsSource.addEventListener('dragend', (e) => {
                 setTimeout(() => {
-                    if (draggedItem) {
+                    if(draggedItem) {
                         draggedItem.style.display = 'flex';
                         draggedItem = null;
                     }
@@ -182,9 +182,9 @@
         renderCustomReport(reportData, chartType) {
             const container = document.getElementById('report-chart-container');
             if (!container) return;
-
+            
             container.innerHTML = ''; // Limpiar el contenedor
-
+            
             if (!reportData || reportData.labels.length === 0) {
                 container.innerHTML = `
                     <div class="report-placeholder">
@@ -200,7 +200,7 @@
                 data: reportData.data,
                 backgroundColor: reportData.labels.map((_, i) => `hsl(${i * 60}, 70%, 60%)`)
             };
-
+            
             this.renderD3Chart('report-chart-container', d3ChartData, chartType, 'Reporte Personalizado');
         },
 
@@ -672,6 +672,50 @@
                     </tr>`).join('');
             }
             this.renderPaginationControls();
+        },
+
+        /**
+         * Renderiza el historial de solicitudes de GBs.
+         */
+        renderGbRequestsHistory() {
+            const tbody = document.getElementById('gb-requests-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted fst-italic">Cargando historial...</td></tr>`;
+
+            API.runServerFunction('getGbRequestsHistory', null, response => {
+                if (response.status !== 'success') {
+                    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">${response.message || 'Error al obtener datos.'}</td></tr>`;
+                    return;
+                }
+
+                const isAuditor = state.userProfile.role === 'AUDITOR' || state.userProfile.role === 'SUPERUSER';
+
+                if (response.data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted fst-italic">No hay solicitudes registradas.</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = response.data.map(r => `
+                    <tr>
+                        <td>${new Date(r.timestamp).toLocaleString()}</td>
+                        <td>${r.usuario}</td>
+                        <td>${r.idGestion}</td>
+                        <td>${r.numeroContrato}</td>
+                        <td>${r.numeroLinea}</td>
+                        <td>${r.smsBackup}</td>
+                        <td>${r.motivo}</td>
+                        <td class="text-center"><input type="checkbox" class="form-check-input gb-audit-checkbox" data-row="${r.rowNumber}" ${r.revisado ? 'checked' : ''} ${isAuditor ? '' : 'disabled'}></td>
+                    </tr>
+                `).join('');
+
+                if (isAuditor) {
+                    document.querySelectorAll('.gb-audit-checkbox').forEach(cb => {
+                        cb.addEventListener('change', Handlers.handleGbAuditCheckboxChange);
+                    });
+                }
+            }, error => {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">${error.message}</td></tr>`;
+            });
         },
 
         /**
@@ -1523,6 +1567,56 @@
         },
 
         /**
+         * @description Renderiza el historial de solicitudes de GBs.
+         *              Valida y registra el payload recibido del servidor.
+         *              Muestra una fila de error si los datos no pueden parsearse.
+         */
+        renderGbRequestsHistory() {
+            const tbody = document.getElementById('gb-requests-history-body');
+            if (!tbody) return;
+
+            // Mensaje de carga inicial
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted fst-italic">Cargando...</td></tr>`;
+
+            API.runServerFunction('getGbRequestsHistory', null,
+                payload => {
+                    console.log('📦 Payload getGbRequestsHistory:', payload);
+                    let history;
+
+                    try {
+                        history = typeof payload === 'string' ? JSON.parse(payload) : payload;
+                    } catch (e) {
+                        console.error('❌ Error al parsear historial de GBs:', e);
+                    }
+
+                    if (!Array.isArray(history)) {
+                        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error al cargar historial de solicitudes</td></tr>`;
+                        return;
+                    }
+
+                    if (history.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted fst-italic">Sin solicitudes registradas</td></tr>`;
+                        return;
+                    }
+
+                    tbody.innerHTML = history.map(r => `
+                        <tr>
+                            <td>${r.fecha || r.timestamp || '-'}</td>
+                            <td>${r.linea || r.line || '-'}</td>
+                            <td>${r.solicitante || r.usuario || '-'}</td>
+                            <td>${r.gb || r.cantidad || '-'}</td>
+                            <td>${r.estado || '-'}</td>
+                        </tr>
+                    `).join('');
+                },
+                error => {
+                    console.error('❌ Error del servidor al obtener historial de GBs:', error);
+                    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error del servidor al obtener historial</td></tr>`;
+                }
+            );
+        },
+
+        /**
          * 🔧 FUNCIÓN CORREGIDA: Manejador de errores que usa el sistema de loading
          * @param {Error} error - El objeto de error.
          */
@@ -1566,4 +1660,5 @@
             }
         },
     };
+    document.addEventListener('gbRequestSubmitted', () => UI.renderGbRequestsHistory());
 </script>
