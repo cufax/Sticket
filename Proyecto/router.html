@@ -1,5 +1,5 @@
 <script>
-    // ===============================================================
+  // ===============================================================
     // 4. ROUTER (Gestión de Vistas)
     // ===============================================================
 
@@ -50,6 +50,10 @@
                 // ✅ **LA CORRECCIÓN ESTÁ AQUÍ**
                 case 'auditoria':
                     UI.renderUserMetrics(false); // Llama a la función para renderizar las métricas
+                    break;
+                case 'carga-gbs':
+                case 'gb-requests':
+                    UI.renderGbRequestsHistory();
                     break;
             }
         }
