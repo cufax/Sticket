@@ -49,6 +49,10 @@
         <i class="fas fa-user-shield"></i>
         <span>Auditoría</span>
       </a>
+      <a href="#" class="nav-link" id="nav-gb-requests" data-view="gb-requests">
+        <i class="fas fa-database"></i>
+        <span>Carga de GBs</span>
+      </a>
     </div>
   </nav>
 
@@ -118,10 +122,15 @@
     <div class="content-area">
       <div id="dashboard-view" class="view active">
         <div class="d-flex justify-content-between align-items-center mb-4">
-          <h1 class="h3 mb-0 fw-bold">Dashboard General</h1> <button class="btn btn-primary"
-                        data-bs-toggle="modal" data-bs-target="#modalNuevoTicket">
-                        <i class="fas fa-plus me-2"></i>Crear Ticket
-                    </button>
+          <h1 class="h3 mb-0 fw-bold">Dashboard General</h1>
+          <div>
+            <button class="btn btn-secondary me-2" data-bs-toggle="modal" data-bs-target="#modalSolicitarGbs">
+              <i class="fas fa-database me-2"></i>Solicitar GBs
+            </button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoTicket">
+              <i class="fas fa-plus me-2"></i>Crear Ticket
+            </button>
+          </div>
         </div>
 
         <div class="dashboard-grid">
@@ -418,8 +427,163 @@
           </div>
         </div>
       </div>
+      <div id="gb-requests-view" class="view">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h1 class="h3 mb-0 fw-bold">Historial de Carga de GBs</h1>
+        </div>
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Usuario</th>
+                    <th>ID Gestión FAN</th>
+                    <th>Contrato</th>
+                    <th>Línea</th>
+                    <th>SMS WiFi BackUp</th>
+                    <th>Motivo</th>
+                    <th>Revisado</th>
+                  </tr>
+                </thead>
+                <tbody id="gb-requests-table-body">
+                  <tr>
+                    <td colspan="8" class="text-center text-muted fst-italic">Cargando historial...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </main>
+  <div class="modal fade" id="modalSolicitarGbs" tabindex="-1" aria-labelledby="modalSolicitarGbsLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalSolicitarGbsLabel"><i class="fas fa-database me-2"></i>Solicitar GBs</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="alertPlaceholderGb"></div>
+          <form id="solicitarGbForm" novalidate>
+            <div class="row g-4">
+              <div class="col-md-6">
+                <label for="gbUsuario" class="form-label">Usuario (U) <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="gbUsuario" name="usuario" required placeholder="Ej: u111111">
+                <div class="invalid-feedback">Por favor, ingresa el Usuario.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="gbIdGestion" class="form-label">ID Gestión FAN <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="gbIdGestion" name="idGestion" required placeholder="Ej: 123456789">
+                <div class="invalid-feedback">Por favor, ingresa el ID Gestión FAN.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="gbContrato" class="form-label">Número de Contrato <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="gbContrato" name="numeroContrato" required placeholder="Ej: 987654321">
+                <div class="invalid-feedback">Por favor, ingresa el Número de Contrato.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="gbLinea" class="form-label">Número de Línea <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="gbLinea" name="numeroLinea" required placeholder="Ej: 3794123456">
+                <div class="invalid-feedback">Por favor, ingresa el Número de Línea.</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label d-block">¿El cliente recibio SMS WiFi BackUp?</label>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="smsBackup" id="gbSmsSi" value="Si" required>
+                  <label class="form-check-label" for="gbSmsSi">Si</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="smsBackup" id="gbSmsNo" value="No" required>
+                  <label class="form-check-label" for="gbSmsNo">No</label>
+                </div>
+                <div class="invalid-feedback d-block">Por favor, selecciona una opción.</div>
+              </div>
+              <div class="col-md-12">
+                <label for="gbMotivo" class="form-label">Motivo de Escalamiento <span class="text-danger">*</span></label>
+                <textarea class="form-control" id="gbMotivo" name="motivo" rows="3" required placeholder="Describe el motivo"></textarea>
+                <div class="invalid-feedback">Por favor, ingresa el motivo de escalamiento.</div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" form="solicitarGbForm" class="btn btn-primary" id="submitGbButton">
+            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+            <span class="button-text"><i class="fas fa-paper-plane me-2"></i>Enviar</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalNuevoTicket" tabindex="-1" aria-labelledby="modalNuevoTicketLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalSolicitarGbsLabel"><i class="fas fa-database me-2"></i>Solicitar GBs</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="alertPlaceholderGb"></div>
+          <form id="solicitarGbForm" novalidate>
+            <div class="row g-4">
+              <div class="col-md-6">
+                <label for="gbUsuario" class="form-label">Usuario (U) <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="gbUsuario" name="usuario" required placeholder="Ej: u111111">
+                <div class="invalid-feedback">Por favor, ingresa el Usuario.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="gbIdGestion" class="form-label">ID Gestión FAN <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="gbIdGestion" name="idGestion" required placeholder="Ej: 123456789">
+                <div class="invalid-feedback">Por favor, ingresa el ID Gestión FAN.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="gbContrato" class="form-label">Número de Contrato <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="gbContrato" name="numeroContrato" required placeholder="Ej: 987654321">
+                <div class="invalid-feedback">Por favor, ingresa el Número de Contrato.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="gbLinea" class="form-label">Número de Línea <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="gbLinea" name="numeroLinea" required placeholder="Ej: 3794123456">
+                <div class="invalid-feedback">Por favor, ingresa el Número de Línea.</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label d-block">¿El cliente recibio SMS WiFi BackUp?</label>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="smsBackup" id="gbSmsSi" value="Si" required>
+                  <label class="form-check-label" for="gbSmsSi">Si</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="smsBackup" id="gbSmsNo" value="No" required>
+                  <label class="form-check-label" for="gbSmsNo">No</label>
+                </div>
+                <div class="invalid-feedback d-block">Por favor, selecciona una opción.</div>
+              </div>
+              <div class="col-md-12">
+                <label for="gbMotivo" class="form-label">Motivo de Escalamiento <span class="text-danger">*</span></label>
+                <textarea class="form-control" id="gbMotivo" name="motivo" rows="3" required placeholder="Describe el motivo"></textarea>
+                <div class="invalid-feedback">Por favor, ingresa el motivo de escalamiento.</div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" form="solicitarGbForm" class="btn btn-primary" id="submitGbButton">
+            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+            <span class="button-text"><i class="fas fa-paper-plane me-2"></i>Enviar</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="modal fade" id="modalNuevoTicket" tabindex="-1" aria-labelledby="modalNuevoTicketLabel"
     aria-hidden="true">
