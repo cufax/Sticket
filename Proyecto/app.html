@@ -1,5 +1,5 @@
 <script>
-    // ===============================================================
+  // ===============================================================
     // 7. APP (Núcleo de la Aplicación)
     // ===============================================================
 
@@ -16,7 +16,7 @@
             LoadingManager.show();
 
             // ✅ Inicializar Tooltips de Bootstrap
-            new bootstrap.Tooltip(document.body, {
+            new 4.Tooltip(document.body, {
                 selector: "[data-bs-toggle='tooltip']"
             });
 
@@ -321,13 +321,17 @@
             document.getElementById('darkModeSwitch')?.addEventListener('change', UI.toggleDarkMode);
             document.getElementById('search-input')?.addEventListener('input', Handlers.handleSearch);
             document.getElementById('escalamientoForm')?.addEventListener('submit', Handlers.handleTicketSubmit);
+            document.getElementById('solicitarGbForm')?.addEventListener('submit', Handlers.handleGbRequestSubmit);
             document.getElementById('export-to-excel-btn')?.addEventListener('click', Handlers.handleExport);
             // NUEVO: Event listener para el switch de "Mis Tickets"
             document.getElementById('myTicketsSwitch')?.addEventListener('change', Handlers.handleMyTicketsFilterChange);
 
-            ['modalNuevoTicket', 'modalDetalleTicket', 'modalReporte'].forEach(id => {
+            ['modalNuevoTicket', 'modalDetalleTicket', 'modalReporte', 'modalSolicitarGbs'].forEach(id => {
                 document.getElementById(id)?.addEventListener('show.bs.modal', Handlers.handleModalOpen);
             });
+
+            //NUEVO LISTENER PARA PEGAR CON CTRL+V
+            document.addEventListener('paste', Handlers.handlePasteAttachment);
 
             document.getElementById('modalMetricasUsuario')?.addEventListener('show.bs.modal', UI.renderUserMetricsModal.bind(UI));
             document.getElementById('sidebarToggle')?.addEventListener('click', UI.toggleSidebar);
