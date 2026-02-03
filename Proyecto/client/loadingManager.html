@@ -1,0 +1,70 @@
+<script>
+    // ==============================================================================================================================
+    // SISTEMA DE GESTIÓN DE LOADING - PROPIETARIOS DEL CÓDIGO: FACUNDO ALVAREZ  Y ALEJANDRO DAVID GARCIA PARDO
+    // ============================================================================================================================
+
+    /**
+     * @description Sistema robusto de gestión del spinner de carga
+     * Implementa timeout de seguridad y contador de referencias
+     */
+    const LoadingManager = {
+        activeRequests: 0,
+        maxTimeout: 30000,
+        timeoutId: null,
+
+        /**
+         * Muestra el spinner y inicia el timeout de seguridad
+         */
+        show() {
+            this.activeRequests++;
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+            }
+
+            // Timeout de seguridad - ocultar después de 30 segundos máximo
+            if (this.timeoutId) {
+                clearTimeout(this.timeoutId);
+            }
+
+            this.timeoutId = setTimeout(() => {
+                console.warn('⚠️ TIMEOUT DE SEGURIDAD: Ocultando spinner después de 30 segundos');
+                this.forceHide();
+            }, this.maxTimeout);
+        },
+
+        /**
+         * Oculta el spinner de forma controlada
+         */
+        hide() {
+            this.activeRequests = Math.max(0, this.activeRequests - 1);
+
+            if (this.activeRequests === 0) {
+                this.forceHide();
+            }
+        },
+
+        /**
+         * Fuerza el ocultado del spinner
+         */
+        forceHide() {
+            this.activeRequests = 0;
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+            }
+
+            if (this.timeoutId) {
+                clearTimeout(this.timeoutId);
+                this.timeoutId = null;
+            }
+        },
+
+        /**
+         * Reinicia el sistema de loading
+         */
+        reset() {
+            this.forceHide();
+        }
+    };
+</script>

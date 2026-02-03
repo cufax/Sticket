@@ -1,0 +1,478 @@
+<script>
+    // ==============================================================================================================================
+    // APP (Núcleo de la Aplicación) - PROPIETARIOS DEL CÓDIGO: FACUNDO ALVAREZ  Y ALEJANDRO DAVID GARCIA PARDO
+    // =============================================================================================================================
+
+    /**
+     * @description El objeto 'App' es el controlador principal de la aplicación.
+     * Orquesta la inicialización, la carga de datos y el enlace de eventos.
+     */
+    const App = {
+        // =============================================================================================================================================================================================
+        /**
+         * @description Método de inicialización. Es el punto de entrada de la lógica de la aplicación.
+         */
+        init() {
+            console.log('🚀 Inicializando aplicación...');
+            LoadingManager.show();
+
+            // ✅ Inicializar Tooltips de Bootstrap
+            new bootstrap.Tooltip(document.body, {
+                selector: "[data-bs-toggle='tooltip']"
+            });
+
+            // LÓGICA UNIFICADA DE SWITCH Y TÍTULO INICIAL
+            const myTicketsSwitch = document.getElementById('myTicketsSwitch');
+            if (myTicketsSwitch) {
+                const storedValue = localStorage.getItem('myTicketsFilter');
+
+                // Lógica: Si no hay nada guardado, asumimos TRUE (Personal) por defecto
+                state.isMyTicketsFilterActive = storedValue !== null ? storedValue === 'true' : true;
+
+                // Sincronizar el switch visualmente
+                myTicketsSwitch.checked = state.isMyTicketsFilterActive;
+
+                // ✨ Sincronizar el título del Dashboard (Personal vs General)
+                UI.updateDashboardTitle(state.isMyTicketsFilterActive);
+            }
+
+            try {
+                API.runServerFunction('getUserProfile', null, this.onProfileLoaded.bind(this), UI.handleError);
+            } catch (error) {
+                console.error('❌ Error en inicialización:', error);
+                UI.handleError(error);
+                LoadingManager.hide();
+            }
+        },
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Obtiene las columnas disponibles para exportación según el rol del usuario.
+         * @returns {Array} Array de objetos con información de las columnas.
+         */
+        getAvailableColumnsForExport() {
+            const baseColumns = [
+                { key: 'Ticket Interno', label: 'Ticket Interno', defaultSelected: true },
+                { key: 'Pedido de escalamiento (Asunto)', label: 'Asunto del Ticket', defaultSelected: true }, // Alineado con el formulario
+                { key: 'Planilla (Cliente)', label: 'Planilla Escalamiento', defaultSelected: true }, // Alineado con el formulario
+                { key: 'Creado Por', label: 'Creado Por', defaultSelected: true },
+                { key: 'Estado', label: 'Estado', defaultSelected: true },
+                { key: 'Timestamp', label: 'Fecha de Creación', defaultSelected: true },
+                { key: 'Herramienta', label: 'Herramienta', defaultSelected: false },
+                { key: 'N° Caso Yoizen', label: 'N° Caso Yoizen', defaultSelected: false },
+                { key: 'URL Adjunto', label: 'URL del Adjunto', defaultSelected: false },
+                { key: 'ID Derivacion FAN', label: 'ID Derivación FAN', defaultSelected: false },
+                { key: 'N° Ticket Escalamiento', label: 'N° Ticket Escalamiento', defaultSelected: false },
+                { key: 'Prioridad', label: 'Prioridad', defaultSelected: true },
+                { key: 'Tomado Por', label: 'Tomado Por', defaultSelected: true }
+            ];
+
+            // COLUMNAS ADICIONALES PARA SUPERUSUARIOS
+            if (state.userProfile.role === 'SUPERUSER') {
+                baseColumns.push(
+                    { key: 'Observaciones Auditor', label: 'Observaciones del Auditor', defaultSelected: false }
+                );
+            }
+
+            // COLUMNAS ADICIONALES PARA AUDITORES
+            if (state.userProfile.role === 'AUDITOR') {
+                baseColumns.push(
+                    { key: 'Observaciones Auditor', label: 'Observaciones del Auditor', defaultSelected: true }
+                );
+            }
+
+            return baseColumns;
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Callback que se ejecuta cuando el perfil del usuario se ha cargado correctamente.
+         * @param {object} profile - El objeto de perfil devuelto por el backend de Apps Script.
+         */
+
+        onDataLoaded(data) {
+            console.log('📦 Datos recibidos:', data);
+
+            // 🛡️ CORRECCIÓN: Primero verificamos si el servidor reportó un error explícito
+            if (data && data.status === 'error') {
+                console.error('❌ Error reportado por backend:', data.message);
+                UI.handleError(new Error(data.message)); // Muestra el error REAL (ej: "CacheManager is not defined")
+                LoadingManager.hide();
+                return;
+            }
+
+            // 🛡️ LUEGO verificamos si la estructura es válida
+            if (!data || !Array.isArray(data.tickets)) {
+                console.error('❌ Estructura inválida:', data);
+                UI.handleError(new Error('La respuesta del servidor no es válida (Formato incorrecto).'));
+                LoadingManager.hide();
+                return;
+            }
+            // FUNCIÓN DE MAPEO CORREGIDA Y ROBUSTA
+            const mapTicketData = (t) => {
+                //  Función auxiliar para normalizar booleanos
+                const toBoolean = (value) => {
+                    if (typeof value === 'boolean') return value;
+                    if (typeof value === 'string') {
+                        const lowerValue = value.toLowerCase().trim();
+                        return lowerValue === 'true' || lowerValue === '1' || lowerValue === 'yes';
+                    }
+                    return Boolean(value);
+                };
+
+                // Función auxiliar para normalizar fechas
+                const toDate = (value) => {
+                    if (!value) return null;
+                    if (value instanceof Date) return value;
+                    if (typeof value === 'string' && value.trim() !== '') {
+                        const parsed = new Date(value);
+                        return isNaN(parsed.getTime()) ? null : parsed;
+                    }
+                    return null;
+                };
+
+                return {
+                    ticketInterno: String(t['Ticket Interno'] || ''),
+                    pedido: String(t['Pedido de escalamiento (Asunto)'] || ''),
+                    planilla: String(t['Planilla (Cliente)'] || ''),
+                    creadoPor: String(t['Creado Por'] || ''),
+                    estado: String(t['Estado'] || 'Registrado'),
+                    timestamp: t['Timestamp'] ? new Date(t['Timestamp']) : new Date(),
+                    herramienta: String(t['Herramienta'] || ''),
+                    casoYoizen: String(t['N° Caso Yoizen'] || ''),
+                    adjuntoUrl: String(t['URL Adjunto'] || ''),
+                    idDerivacion: String(t['ID Derivacion FAN'] || ''),
+                    numeroTicket: String(t['N° Ticket Escalamiento'] || ''),
+                    observacionesAuditor: String(t['Observaciones Auditor'] || ''),
+                    prioridad: String(t['Prioridad'] || 'Normal'),
+                    tomadoPor: String(t['Tomado Por'] || ''),
+
+                    // CAMPOS DE AUDITORÍA MAPEADOS CORRECTAMENTE
+                    fechaEscalamientoReal: toDate(t['Fecha Escalamiento Real']),
+                    fechaResolucionReal: toDate(t['Fecha Resolución Real']),
+                    malEscalado: toBoolean(t['Mal Escalado']),
+                    seguimientoEspecial: toBoolean(t['Seguimiento Especial']),
+                    notaSeguimiento: String(t['Nota Seguimiento'] || ''),
+                    resolucionPrimerContacto: toBoolean(t['Resolucion Primer Contacto'])
+                };
+            };
+
+            // Usar la función de mapeo para ambos arrays
+            state.tickets = data.tickets.map(mapTicketData);
+            state.allTicketsForStats = (data.allTicketsForStats || []).map(mapTicketData);
+
+            // El resto de la función permanece igual...
+            state.pagination.totalTickets = data.totalTickets || 0;
+            state.pagination.totalPages = Math.ceil(state.pagination.totalTickets / state.pagination.pageSize);
+            state.allPlanillas = (data.allPlanillas || []).filter(Boolean).sort();
+            state.allCreators = (data.allCreators || []).filter(Boolean).sort();
+            state.allSuperiores = (data.allSuperiores || []).filter(Boolean).sort();
+            state.pendingTeamTickets = data.pendingTeamTickets || 0;
+
+            console.log('✅ Datos procesados correctamente con mapeo robusto');
+            Router.showView(state.currentView);
+            LoadingManager.hide();
+        },
+
+        // =============================================================================================================================================================================================
+        onProfileLoaded(profile) {
+            console.log('👤 Perfil de usuario cargado:', profile);
+
+            if (!profile || !profile.email) {
+                UI.handleError(new Error("No se pudo obtener el perfil del usuario."));
+                LoadingManager.hide();
+                return;
+            }
+
+            state.userProfile = profile;
+            document.querySelector('#dropdownUser1 strong').textContent = profile.email.split('@')[0];
+            UI.updateProfileImage(profile.photoUrl, profile.email);
+            UI.applyPermissions();
+            this.bindEvents();
+            this.refreshData();
+            this.fetchNotifications();
+            this.fetchMotivosOperativos();
+
+            API.runServerFunction('getUserSuperior', null,
+                response => {
+                    if (response.status === 'success' && response.superior) {
+                        UI.displayUserSuperior(response.superior);
+                    } else {
+                        UI.displayUserSuperior('No asignado');
+                    }
+                },
+                error => {
+                    console.error('❌ Error en la llamada a getUserSuperior:', error);
+                    UI.displayUserSuperior('Error');
+                }
+            );
+            // EFECTO SINGULARIDAD: Ocultar Splash Screen
+            setTimeout(() => {
+                const splash = document.getElementById('initial-splash');
+                if (splash) {
+                    splash.classList.add('splash-hidden'); // Activa la transición CSS
+
+                    // Eliminar del DOM después de que termine la animación para liberar memoria
+                    setTimeout(() => {
+                        splash.remove();
+                    }, 1000);
+                }
+            }, 1500); // Pequeño delay artificial para que aprecien la belleza (opcional)
+
+
+        },
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Función para forzar una recarga de los datos desde el servidor.
+         * @param {Object} [options={}] - Opciones de paginación y filtrado.
+         */
+        refreshData(options = {}) {
+            LoadingManager.show();
+            const currentOptions = {
+                page: state.pagination.currentPage,
+                pageSize: state.pagination.pageSize,
+                searchQuery: state.filters.searchQuery,
+                filterStatus: state.filters.status,
+                filterTool: state.filters.tool,
+                filterMotivoEscalamiento: state.filters.motivoEscalamiento,
+                filterCreatedBy: state.filters.createdBy,
+                filterEquipo: state.filters.equipo,
+                startDate: state.filters.startDate,
+                endDate: state.filters.endDate,
+                filterPriority: state.filters.priority,
+                filterMyTickets: state.isMyTicketsFilterActive,
+                ...options
+            };
+            API.runServerFunction('getDashboardData', currentOptions, this.onDataLoaded.bind(this), UI.handleError);
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Obtiene las notificaciones no leídas del servidor.
+         */
+        fetchNotifications() {
+            API.runServerFunction('getUnreadNotifications', null,
+                response => {
+                    if (response.status === 'ok') {
+                        state.notifications = response.notifications;
+                        UI.renderNotificationSummary();
+                    } else {
+                        UI.handleError(new Error(response.message || 'Error al cargar notificaciones.'));
+                    }
+                },
+                error => {
+                    UI.handleError(error);
+                }
+            );
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * Obtiene todos los motivos operativos de la hoja "Planillas_Master" para el datalist.
+         */
+        fetchMotivosOperativos() {
+            API.runServerFunction('getAllMotivosOperativos', null,
+                response => {
+                    if (Array.isArray(response)) {
+                        state.motivosOperativos = response;
+                        UI.populateMotivoEscalamientoDatalist(response);
+                    } else {
+                        console.error('❌ Respuesta inesperada al obtener motivos operativos:', response);
+                    }
+                },
+                error => {
+                    console.error('❌ Error al obtener motivos operativos:', error);
+                    UI.handleError(error);
+                }
+            );
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Centraliza la asignación de todos los 'event listeners' de la aplicación.
+         */
+        bindEvents() {
+            console.log('🔗 Enlazando eventos...');
+
+            // --- REFERENCIAS A ELEMENTOS UI ---
+            // Botón Pingüino (IA) y Panel
+            const fab = document.getElementById('fabButton');
+            const panel = document.getElementById('right-side-panel');
+            const overlay = document.getElementById('side-panel-overlay');
+            const closeBtn = document.getElementById('close-side-panel');
+
+            // Botón Herramientas
+            const toolsFabContainer = document.getElementById('tools-fab-container');
+            const toolsFabButton = document.getElementById('toolsFabButton');
+
+            // --- LÓGICA DE APERTURA/CIERRE DEL CHAT ---
+            const openPanel = () => {
+                panel?.classList.add('open');
+                overlay?.classList.add('show');
+
+                // ✨ EFECTO SINGULARIDAD: Ocultar TODOS los botones flotantes
+                fab?.classList.add('hide');
+                toolsFabButton?.classList.add('hide');
+
+                // Si el menú de herramientas estaba abierto, cerrarlo para que no quede flotando "invisible"
+                toolsFabContainer?.classList.remove('open');
+            };
+
+            const closePanel = () => {
+                panel?.classList.remove('open');
+                overlay?.classList.remove('show');
+
+                // ✨ EFECTO SINGULARIDAD: Regresar los botones con estilo
+                fab?.classList.remove('hide');
+                toolsFabButton?.classList.remove('hide');
+            };
+
+            // --- LISTENERS DEL CHAT ---
+            fab?.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (panel?.classList.contains('open')) {
+                    closePanel();
+                } else {
+                    openPanel();
+                }
+            });
+
+            closeBtn?.addEventListener('click', closePanel);
+            overlay?.addEventListener('click', closePanel);
+
+            document.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Escape' && panel?.classList.contains('open')) {
+                    closePanel();
+                }
+            });
+
+            // --- LISTENERS DE HERRAMIENTAS ---
+            toolsFabButton?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toolsFabContainer.classList.toggle('open');
+            });
+
+            // Cierra el menú de herramientas al hacer clic fuera
+            document.addEventListener('click', (e) => {
+                if (toolsFabContainer?.classList.contains('open') && !toolsFabContainer.contains(e.target)) {
+                    toolsFabContainer.classList.remove('open');
+                }
+            });
+
+            // --- LISTENERS DE NAVEGACIÓN Y APP ---
+            const sidebarNav = document.getElementById('sidebar-nav');
+            if (sidebarNav) sidebarNav.addEventListener('click', Handlers.handleNavigation);
+
+            const viewAllBtn = document.getElementById('view-all-tickets-btn');
+            if (viewAllBtn) {
+                viewAllBtn.addEventListener('click', () => Router.showView('tickets'));
+            }
+
+            document.getElementById('darkModeSwitch')?.addEventListener('change', UI.toggleDarkMode);
+            document.getElementById('search-input')?.addEventListener('input', Handlers.handleSearch);
+            document.getElementById('escalamientoForm')?.addEventListener('submit', Handlers.handleTicketSubmit);
+            document.getElementById('export-to-excel-btn')?.addEventListener('click', Handlers.handleExport);
+            document.getElementById('myTicketsSwitch')?.addEventListener('change', Handlers.handleMyTicketsFilterChange);
+
+            ['modalNuevoTicket', 'modalDetalleTicket', 'modalReporte'].forEach(id => {
+                document.getElementById(id)?.addEventListener('show.bs.modal', Handlers.handleModalOpen);
+            });
+
+            document.addEventListener('paste', Handlers.handlePasteAttachment);
+            document.getElementById('capturaFile')?.addEventListener('change', Handlers.handleFileSelection); // Nuevo listener de archivo
+
+            document.getElementById('modalMetricasUsuario')?.addEventListener('show.bs.modal', UI.renderUserMetricsModal.bind(UI));
+            document.getElementById('sidebarToggle')?.addEventListener('click', UI.toggleSidebar);
+
+            // Listeners de Filtros
+            ['status', 'tool', 'motivoEscalamiento', 'createdBy', 'equipo', 'startDate', 'endDate', 'priority'].forEach(filter => {
+                document.getElementById(`tickets-filter-${filter}`)?.addEventListener('change', Handlers.handleFilterChange);
+            });
+
+            document.getElementById('tickets-clear-filters-btn')?.addEventListener('click', Handlers.handleClearFilters);
+            document.getElementById('tickets-pagination')?.addEventListener('click', Handlers.handlePaginationClick);
+
+            // Listeners de Gestión Rápida
+            document.getElementById('quick-manage-filter-status')?.addEventListener('change', Handlers.handleQuickManageFilterChange);
+            document.getElementById('quick-manage-filter-priority')?.addEventListener('change', Handlers.handleQuickManageFilterChange);
+            document.getElementById('quick-manage-clear-filters-btn')?.addEventListener('click', Handlers.handleQuickManageClearFilters);
+            document.getElementById('quick-manage-pagination')?.addEventListener('click', Handlers.handleQuickManagePaginationClick);
+
+            document.getElementById('take-ticket-btn')?.addEventListener('click', Handlers.handleTakeTicket);
+
+            // Event listener para el campo Motivo de Escalamiento
+            const motivoInput = document.getElementById('motivoEscalamiento');
+            if (motivoInput) {
+                motivoInput.addEventListener('change', Handlers.handleMotivoEscalamientoChange);
+                motivoInput.addEventListener('blur', Handlers.handleMotivoEscalamientoChange);
+            }
+
+            // Listeners del Chat Input
+            document.getElementById('chat-send-btn')?.addEventListener('click', Handlers.handleBotQuery);
+            document.getElementById('chat-input')?.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    Handlers.handleBotQuery();
+                }
+            });
+            // LÓGICA DEL BOTÓN DE PERFIL / CONFIGURACIÓN
+            document.getElementById('btn-open-config')?.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                // 1. Obtener datos del estado
+                const profile = state.userProfile;
+                const superiorText = document.getElementById('user-superior-display')?.textContent.replace('Equipo: ', '') || 'No asignado';
+
+                // 2. Llenar el Modal
+                document.getElementById('config-user-photo').src = profile.photoUrl;
+                document.getElementById('config-user-email').textContent = profile.email;
+
+                // Formatear nombre (Capitalizar primera letra del email)
+                const name = profile.email.split('@')[0].split('.')
+                    .map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+                document.getElementById('config-user-name').textContent = name;
+
+                // Configurar Badge de Rol
+                const roleBadge = document.getElementById('config-user-role-badge');
+                roleBadge.textContent = profile.role;
+                roleBadge.className = `position-absolute bottom-0 end-0 badge rounded-pill shadow-sm ${profile.role === 'SUPERUSER' ? 'bg-danger' :
+                        profile.role === 'AUDITOR' ? 'bg-success' : 'bg-info'
+                    }`;
+
+                document.getElementById('config-user-team').textContent = superiorText;
+
+                // 3. Mostrar Modal
+                const modal = new bootstrap.Modal(document.getElementById('modalConfiguracion'));
+                modal.show();
+            });
+        },
+        // =============================================================================================================================================================================================
+    };
+
+
+    // ===============================================================
+    // 8. INICIALIZACIÓN
+    // ===============================================================
+
+    document.addEventListener('DOMContentLoaded', () => {
+        window.UI = UI;
+        window.Handlers = Handlers;
+        window.LoadingManager = LoadingManager;
+
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.body.classList.add('dark-mode');
+            const switchInput = document.getElementById('darkModeSwitch');
+            if (switchInput) {
+                switchInput.checked = true;
+            }
+        }
+
+        console.log('🎯 Iniciando Sticket...');
+        App.init();
+    });
+</script>

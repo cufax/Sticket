@@ -1,0 +1,1614 @@
+<script>
+  // ==============================================================================================================================
+    // UI (Manipulación del DOM) - PROPIETARIOS DEL CÓDIGO: FACUNDO ALVAREZ  Y ALEJANDRO DAVID GARCIA PARDO
+    // ============================================================================================================================
+
+    /**
+     * @description El objeto 'UI' agrupa todas las funciones responsables de manipular el DOM.
+     */
+    const UI = {
+
+        renderAgentPerformanceMetrics() {
+            const metricsData = this.calculateAgentPerformance();
+            const tbody = document.getElementById('agent-performance-table-body');
+            if (!tbody) return;
+
+            tbody.innerHTML = Object.entries(metricsData).map(([user, data]) => {
+                const avgTtr = data.ttr.length > 0 ? (data.ttr.reduce((a, b) => a + b, 0) / data.ttr.length).toFixed(1) : 'N/A';
+                const slaPercentage = data.resolvedCount > 0 ? ((data.slaOk / data.resolvedCount) * 100).toFixed(1) + '%' : 'N/A';
+                const errorRate = data.total > 0 ? ((data.malEscalado / data.total) * 100).toFixed(1) + '%' : '0%';
+
+                return `<tr>
+                <td class="fw-bold">${user}</td>
+                <td>${data.total}</td>
+                <td>${avgTtr}</td>
+                <td>${slaPercentage}</td>
+                <td>${errorRate}</td>
+                <td>${data.primerContacto}</td>
+                <td>${data.seguimientoEspecial}</td>
+            </tr>`;
+            }).join('');
+        },
+
+        // =============================================================================================================================================================================================
+        calculateAgentPerformance() {
+            const metrics = {};
+            const allTickets = state.allTicketsForStats;
+
+            allTickets.forEach(ticket => {
+                const user = ticket.creadoPor || 'Desconocido';
+                if (!metrics[user]) {
+                    metrics[user] = {
+                        total: 0, ttr: [], slaOk: 0, malEscalado: 0,
+                        primerContacto: 0, seguimientoEspecial: 0, resolvedCount: 0
+                    };
+                }
+                metrics[user].total++;
+                if (ticket.malEscalado) metrics[user].malEscalado++;
+                if (ticket.resolucionPrimerContacto) metrics[user].primerContacto++;
+                if (ticket.seguimientoEspecial) metrics[user].seguimientoEspecial++;
+
+                if (ticket.estado === 'Resuelto' && ticket.fechaEscalamientoReal && ticket.fechaResolucionReal) {
+                    metrics[user].resolvedCount++;
+                    const ttrHours = (ticket.fechaResolucionReal - ticket.fechaEscalamientoReal) / (1000 * 60 * 60);
+                    metrics[user].ttr.push(ttrHours);
+                    if (ttrHours <= 72) {
+                        metrics[user].slaOk++;
+                    }
+                }
+            });
+            return metrics;
+        },
+
+        // =============================================================================================================================================================================================
+        // LOGICA DE foto de perfil
+        /**
+         * Actualiza la imagen de perfil del usuario con manejo robusto de errores.
+         * @param {string} photoUrl - URL de la foto de perfil.
+         * @param {string} email - Email del usuario (para fallback).
+         */
+        updateProfileImage(photoUrl, email) {
+            const dropdownButton = document.querySelector('#dropdownUser1');
+            const profileIcon = document.querySelector('#dropdownUser1 i.fas.fa-user-circle');
+
+            if (!dropdownButton || !profileIcon) {
+                console.warn('No se encontraron los elementos del perfil');
+                return;
+            }
+
+            console.log('🖼️ Cargando imagen de perfil:', photoUrl);
+
+            if (photoUrl) {
+                // Remover imagen anterior si existe
+                const existingImg = dropdownButton.querySelector('.profile-image');
+                if (existingImg) existingImg.remove();
+
+                // Crear nueva imagen
+                const img = document.createElement('img');
+                img.src = photoUrl;
+                img.className = 'profile-image rounded-circle me-2';
+                img.style.width = '32px';
+                img.style.height = '32px';
+                img.style.objectFit = 'cover';
+                img.style.display = 'none'; // Ocultar hasta que cargue
+                img.alt = 'Foto de perfil';
+
+                // Manejar carga exitosa
+                img.onload = function () {
+                    console.log('✅ Imagen de perfil cargada correctamente');
+                    profileIcon.style.display = 'none';
+                    this.style.display = 'inline';
+                };
+
+                // Manejar error de carga (aunque con Gravatar + fallback es muy raro)
+                img.onerror = function () {
+                    console.warn('❌ Error al cargar imagen, usando ícono por defecto');
+                    this.remove();
+                    profileIcon.style.display = 'inline';
+                };
+
+                // Timeout de seguridad
+                setTimeout(() => {
+                    if (img.style.display === 'none') {
+                        console.warn('⏰ Timeout cargando imagen, usando ícono por defecto');
+                        img.remove();
+                        profileIcon.style.display = 'inline';
+                    }
+                }, 10000); // 10 segundos
+
+                // Insertar imagen antes del ícono
+                dropdownButton.insertBefore(img, profileIcon);
+            } else {
+                console.warn('No se proporcionó URL de imagen');
+                profileIcon.style.display = 'inline';
+            }
+        },
+        // =============================================================================================================================================================================================
+
+        /**
+         * Muestra el nombre del superior del usuario en la barra superior.
+         * @param {string} superiorName - El nombre del superior.
+         */
+        displayUserSuperior(superiorName) {
+            const userSuperiorElement = document.getElementById('user-superior-display');
+            if (userSuperiorElement) {
+                userSuperiorElement.textContent = `Equipo: ${superiorName}`;
+            }
+        },
+        // =============================================================================================================================================================================================
+        // TERMINA LOGICA DE foto de perfil
+        // =============================================================================================================================================================================================
+        // LOGICA DE SUPERIOR
+        /**
+         * Muestra el nombre del superior del usuario en la barra superior.
+         * @param {string} superiorName - El nombre del superior.
+         */
+        displayUserSuperior(superiorName) {
+            const userSuperiorElement = document.getElementById('user-superior-display');
+            if (userSuperiorElement) {
+                userSuperiorElement.textContent = `Equipo: ${superiorName}`;
+            }
+        },
+        // =============================================================================================================================================================================================
+        // TERMINA LOGICA DE SUPERIOR
+        // =============================================================================================================================================================================================
+        // EMPIEZA IAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        addChatMessage(sender, message) {
+            const history = document.getElementById('chat-history');
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('chat-message', sender);
+
+            const p = document.createElement('p');
+            p.textContent = message; // Usar textContent para prevenir inyección de HTML
+            messageDiv.appendChild(p);
+
+            history.appendChild(messageDiv);
+            history.scrollTop = history.scrollHeight;
+        },
+        showBotTyping(isLoading) {
+            let typingIndicator = document.getElementById('bot-typing-indicator');
+            
+            if (isLoading) {
+                // Si ya existe, no hacemos nada
+                if (typingIndicator) return;
+
+                // Crear contenedor del mensaje
+                typingIndicator = document.createElement('div');
+                typingIndicator.id = 'bot-typing-indicator';
+                typingIndicator.classList.add('chat-message', 'bot');
+                
+                // Inyectar los 3 puntos animados (HTML puro para la animación CSS)
+                typingIndicator.innerHTML = `
+                    <div class="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                `;
+                
+                const history = document.getElementById('chat-history');
+                history.appendChild(typingIndicator);
+                history.scrollTop = history.scrollHeight; // Auto-scroll al fondo
+            } else {
+                // Eliminar indicador si existe
+                if (typingIndicator) {
+                    // Pequeña animación de salida (opcional, pero elegante)
+                    typingIndicator.style.opacity = '0';
+                    typingIndicator.style.transform = 'scale(0.8)';
+                    typingIndicator.style.transition = 'all 0.3s ease';
+                    
+                    setTimeout(() => {
+                        if(typingIndicator) typingIndicator.remove();
+                    }, 300);
+                }
+            }
+        },
+        // TERMINA  IAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        // =============================================================================================================================================================================================
+        /**
+         * [MODIFICADO] Renderiza los contadores de tickets por motivo de escalamiento.
+         * @param {object} motivoEscalamientoCounts - Objeto con el conteo de tickets por motivo.
+         * @param {string} targetId - El ID del elemento contenedor donde se renderizará.
+         */
+        renderMotivoEscalamientoCounters(motivoEscalamientoCounts, targetId = 'motivo-escalamiento-counters') {
+            const container = document.getElementById(targetId);
+            if (!container) return;
+
+            const sortedMotivos = Object.entries(motivoEscalamientoCounts)
+                .sort(([, countA], [, countB]) => countB - countA) // Ordenar de mayor a menor
+                .slice(0, 5); // Mostrar los top 5
+
+            let html = `
+        <div class="card h-100 shadow-sm">
+          <div class="card-header">
+            <h6><i class="fas fa-tags me-2"></i>Top 5 Motivos de Escalamiento</h6>
+          </div>
+          <div class="card-body">
+            <ul class="list-group list-group-flush">
+      `;
+
+            if (sortedMotivos.length === 0) {
+                html += `<li class="list-group-item text-muted fst-italic">No hay datos de motivos de escalamiento.</li>`;
+            } else {
+                sortedMotivos.forEach(([motivo, count]) => {
+                    html += `
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              ${motivo}
+              <span class="badge bg-primary rounded-pill">${count}</span>
+            </li>
+          `;
+                });
+            }
+
+            html += `
+            </ul>
+          </div>
+        </div>
+      `;
+            container.innerHTML = html;
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Aplica permisos visuales basados en el rol del usuario.
+         */
+        applyPermissions() {
+            const role = state.userProfile.role;
+            if (role === 'SUPERUSER' || role === 'AUDITOR') {
+                document.getElementById('nav-auditoria').style.display = 'block';
+            } else {
+                document.getElementById('nav-auditoria').style.display = 'none';
+            }
+            const exportButton = document.getElementById('export-to-excel-btn');
+            if (exportButton) {
+                if (role === 'SUPERUSER' || role === 'AUDITOR') {
+                    exportButton.style.display = 'block';
+                } else {
+                    exportButton.style.display = 'none';
+                }
+            }
+        },
+
+        // =============================================================================================================================================================================================
+        renderNotificationSummary() {
+            const notificationContainer = document.getElementById('notification-summary');
+            if (!notificationContainer) return;
+
+            const totalUnread = state.notifications.length;
+            const recentNotifications = state.notifications.slice(0, 3);
+
+            let notificationsHtml = '';
+
+            if (recentNotifications.length === 0) {
+                notificationsHtml = `
+                    <p class="text-muted fst-italic">No hay notificaciones recientes.</p>
+                `;
+            } else {
+                notificationsHtml = `
+                    <ul class="list-group list-group-flush">
+                        ${recentNotifications.map(n => `
+                            <li class="list-group-item d-flex justify-content-between align-items-start notification-item-dashboard"
+                                data-notification-row="${n.row}" data-ticket-id="${n.ticketId || ''}" style="cursor: pointer;">
+                                <div>
+                                    <small class="fw-bold">${n.message}</small><br>
+                                    <small class="text-muted">${new Date(n.timestamp).toLocaleString()}</small>
+                                </div>
+                            </li>
+                        `).join('')}
+                    </ul>
+                `;
+            }
+
+            notificationContainer.innerHTML = `
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6><i class="fas fa-bell me-2"></i>Notificaciones Recientes</h6>
+                        <span class="badge bg-danger rounded-pill">${totalUnread}</span>
+                    </div>
+                    <div class="card-body">
+                        ${notificationsHtml}
+                    </div>
+                </div>
+            `;
+
+            document.querySelectorAll('.notification-item-dashboard').forEach(item => {
+                item.addEventListener('click', Handlers.handleNotificationClick);
+            });
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * [MODIFICADO] Renderiza el resumen de tickets urgentes en el dashboard.
+         * @param {string} targetId - El ID del elemento contenedor donde se renderizará.
+         */
+        renderUrgentTicketsSummary(targetId = 'urgent-tickets-summary') {
+            const urgentContainer = document.getElementById(targetId);
+            if (!urgentContainer) return;
+
+            const urgentTickets = state.allTicketsForStats.filter(t => t.prioridad === 'Urgente');
+            const recentUrgentTickets = urgentTickets.sort((a, b) => b.timestamp - a.timestamp).slice(0, 3);
+
+            if (recentUrgentTickets.length === 0) {
+                urgentContainer.innerHTML = `
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6><i class="fas fa-exclamation-triangle me-2"></i>Tickets Urgentes</h6>
+                        </div>
+                        <div class="card-body d-flex align-items-center justify-content-center">
+                            <p class="text-muted fst-italic">No hay tickets urgentes actualmente.</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            urgentContainer.innerHTML = `
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h6><i class="fas fa-exclamation-triangle me-2"></i>Tickets Urgentes</h6>
+                    </div>
+                    <div class="card-body">
+                        ${recentUrgentTickets.map(t => `
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <small><strong>${t.ticketInterno}:</strong> ${t.pedido}</small>
+                                <small class="text-muted">${t.timestamp.toLocaleDateString()}</small>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Renderiza el contenido completo de la vista del dashboard.
+         * @param {Array<object>} tickets - El array de tickets del estado global.
+         */
+        renderDashboard(tickets) {
+            this.renderTeamRadarAlert();
+            const stats = state.allTicketsForStats.reduce((acc, t) => {
+                if (['Registrado', 'En Progreso'].includes(t.estado)) acc.open++;
+                if (t.estado === 'En Progreso') acc.pending++;
+                if (t.estado === 'Resuelto') acc.resolved++;
+                if (t.prioridad === 'Urgente') acc.urgent++;
+                return acc;
+            }, { open: 0, pending: 0, resolved: 0, urgent: 0 });
+
+            this.renderStats(stats);
+            this.renderRecentTickets(state.allTicketsForStats.slice(0, 5));
+
+            const chartData = this.prepareDashboardCharts(state.allTicketsForStats);
+
+            this.renderD3Chart('ticketsChart', chartData.activity, 'line', 'Actividad de Tickets');
+            this.renderD3Chart('ticket-status-chart', chartData.ticketStatus, 'bar', 'Distribución de Tickets por Estado');
+
+            // CAMBIO: Renderizar el gráfico de métricas en tiempo real como LÍNEA
+            this.renderD3Chart('realtime-metrics-chart', chartData.realtimeMetrics, 'line', 'Tickets Creados (Últimas 24h)');
+
+            this.renderNotificationSummary();
+            this.renderUrgentTicketsSummary('urgent-tickets-summary');
+            this.renderMotivoEscalamientoCounters(chartData.motivoEscalamientoCounts, 'motivo-escalamiento-counters');
+        },
+
+        // 👇 NUEVA FUNCIÓN PARA UI.HTML 👇
+        renderTeamRadarAlert() {
+            const container = document.getElementById('team-radar-container');
+            // Si no existe el contenedor, lo creamos dinámicamente antes del dashboard-grid
+            if (!container) {
+                const dashboardView = document.getElementById('dashboard-view');
+                const newContainer = document.createElement('div');
+                newContainer.id = 'team-radar-container';
+                newContainer.className = 'mb-4';
+                // Insertar después del título
+                dashboardView.insertBefore(newContainer, dashboardView.querySelector('.dashboard-grid'));
+            }
+
+            const finalContainer = document.getElementById('team-radar-container');
+            const count = state.pendingTeamTickets;
+
+            if (count > 0) {
+                finalContainer.innerHTML = `
+                    <div class="radar-alert">
+                        <div class="radar-icon">
+                            <i class="fas fa-satellite-dish fa-spin-pulse"></i>
+                        </div>
+                        <div class="radar-content">
+                            <div class="radar-title">ATENCIÓN DE EQUIPO REQUERIDA</div>
+                            <div class="radar-message">Detectamos <strong>${count} tickets</strong> de tu equipo sin asignar.</div>
+                        </div>
+                        <button class="radar-action" onclick="Handlers.filterPendingTeamTickets()">
+                            VER Y TOMAR <i class="fas fa-arrow-right ms-2"></i>
+                        </button>
+                    </div>
+                `;
+            } else {
+                finalContainer.innerHTML = ''; // Limpiar si no hay pendientes
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Prepara y estructura los datos de los tickets para ser consumidos por la librería de gráficos D3.js.
+         * @param {Array<object>} tickets - El array de tickets.
+         * @returns {object} Un objeto con datos listos para los gráficos de actividad y SLA.
+         */
+        prepareDashboardCharts(tickets) {
+            const activityByDay = new Array(7).fill(0);
+            const resolvedByDay = new Array(7).fill(0);
+            tickets.forEach(t => {
+                const dayOfWeek = t.timestamp.getDay();
+                const adjustedDay = (dayOfWeek === 0) ? 6 : dayOfWeek - 1; // Lunes=0, Domingo=6
+                activityByDay[adjustedDay]++;
+                if (t.estado === 'Resuelto') {
+                    resolvedByDay[adjustedDay]++;
+                }
+            });
+
+            // Datos para el gráfico de estado (para barras)
+            const statusCounts = tickets.reduce((acc, t) => {
+                const status = t.estado || 'Registrado';
+                acc[status] = (acc[status] || 0) + 1;
+                return acc;
+            }, { 'Registrado': 0, 'En Progreso': 0, 'Resuelto': 0, 'Cerrado': 0 });
+
+            const statusLabels = Object.keys(statusCounts);
+            const statusData = Object.values(statusCounts);
+            const statusColors = statusLabels.map(status => {
+                switch (status) {
+                    case 'Registrado': return '#4a90e2';
+                    case 'En Progreso': return '#f5a623';
+                    case 'Resuelto': return '#50e3c2';
+                    case 'Cerrado': return '#9b9b9b';
+                    default: return '#cccccc';
+                }
+            });
+
+            // Datos para el gráfico de tickets por herramienta (para barras)
+            const toolCounts = tickets.reduce((acc, t) => {
+                const tool = t.herramienta || 'Desconocida';
+                acc[tool] = (acc[tool] || 0) + 1;
+                return acc;
+            }, {});
+            const toolLabels = Object.keys(toolCounts);
+            const toolData = Object.values(toolCounts);
+            const toolColors = toolLabels.map((_, i) => `hsl(${i * 60}, 70%, 60%)`); // Colores dinámicos
+
+            // Datos para el gráfico de métricas en tiempo real (ejemplo: tickets creados por hora en las últimas 24h)
+            const now = new Date();
+            const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            const hourlyCounts = new Array(24).fill(0);
+            const hourlyLabels = Array.from({ length: 24 }, (_, i) => {
+                const hour = (now.getHours() - 23 + i + 24) % 24; // Últimas 24 horas
+                return `${hour.toString().padStart(2, '0')}:00`;
+            });
+
+            tickets.forEach(t => {
+                const timestamp = new Date(t.timestamp);
+                if (timestamp >= oneDayAgo && timestamp <= now) {
+                    const hourDiff = Math.floor((now.getTime() - timestamp.getTime()) / (60 * 60 * 1000));
+                    if (hourDiff >= 0 && hourDiff < 24) {
+                        hourlyCounts[23 - hourDiff]++; // Contar en la hora correcta
+                    }
+                }
+            });
+
+            // Datos para el contador de motivos de escalamiento
+            const motivoEscalamientoCounts = tickets.reduce((acc, t) => {
+                const motivo = t.pedido || 'Desconocido';
+                acc[motivo] = (acc[motivo] || 0) + 1;
+                return acc;
+            }, {});
+
+
+            return {
+                activity: {
+                    labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+                    datasets: [{
+                        label: 'Nuevos',
+                        data: activityByDay,
+                        borderColor: 'var(--secondary-color)',
+                        tension: 0.4,
+                        fill: false,
+                    }, {
+                        label: 'Resueltos',
+                        data: resolvedByDay,
+                        borderColor: 'var(--success-color)',
+                        tension: 0.4,
+                        fill: false,
+                    }]
+                },
+                ticketStatus: { // Para gráfico de barras
+                    labels: statusLabels,
+                    data: statusData,
+                    backgroundColor: statusColors
+                },
+                ticketsByTool: { // Para gráfico de barras
+                    labels: toolLabels,
+                    data: toolData,
+                    backgroundColor: toolColors
+                },
+                realtimeMetrics: {
+                    labels: hourlyLabels,
+                    datasets: [{
+                        label: 'Creados',
+                        data: hourlyCounts,
+                        borderColor: 'var(--info-color)',
+                        tension: 0.4,
+                        fill: false,
+                    }]
+                },
+                motivoEscalamientoCounts: motivoEscalamientoCounts // Datos para contadores
+            };
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Renderiza la tabla completa de tickets en la vista 'Tickets'.
+         * @param {Array<object>} tickets - El array de tickets a mostrar.
+         */
+        renderTicketsPage(tickets) {
+            const tbody = document.getElementById('all-tickets-table-body');
+            if (!tbody) return;
+
+            // Llenar filtros de motivo de escalamiento y creadores
+            const motivoEscalamientoFilter = document.getElementById('tickets-filter-motivoEscalamiento');
+            const createdByFilter = document.getElementById('tickets-filter-createdBy');
+            const equipoFilter = document.getElementById('tickets-filter-equipo');
+            const priorityFilter = document.getElementById('tickets-filter-priority');
+
+            if (motivoEscalamientoFilter && createdByFilter && priorityFilter) {
+                const allMotivosEscalamiento = [...new Set(state.allTicketsForStats.map(t => t.pedido).filter(p => p && p.trim() !== ''))].sort();
+                UI.populateSelect(motivoEscalamientoFilter, allMotivosEscalamiento, 'Filtrar por Motivo Escalamiento');
+
+                UI.populateSelect(createdByFilter, state.allCreators, 'Filtrar por Creador');
+                UI.populateSelect(equipoFilter, state.allSuperiores, 'Filtrar por Equipo');
+
+                // Restaurar valores de filtro
+                motivoEscalamientoFilter.value = state.filters.motivoEscalamiento;
+                createdByFilter.value = state.filters.createdBy;
+                equipoFilter.value = state.filters.equipo;
+                document.getElementById('tickets-filter-status').value = state.filters.status;
+                document.getElementById('tickets-filter-tool').value = state.filters.tool;
+                document.getElementById('tickets-filter-startDate').value = state.filters.startDate;
+                document.getElementById('tickets-filter-endDate').value = state.filters.endDate;
+                priorityFilter.value = state.filters.priority;
+            }
+
+            if (tickets.length === 0) {
+                tbody.innerHTML = `<td colspan="8" class="text-center text-muted fst-italic">No hay tickets para mostrar con los filtros actuales.</td>`;
+            } else {
+                tbody.innerHTML = tickets.map(t => `
+                    <tr onclick="Handlers.handleTicketRowClick('${t.ticketInterno}')" style="cursor: pointer;">
+                        <td>${t.ticketInterno}</td>
+                        <td class="truncate-text" title="${t.pedido}">${t.pedido}</td>
+                        <td class="truncate-text" title="${t.planilla}">${t.planilla}</td>
+                        <td><span class="badge bg-secondary">${t.creadoPor}</span></td>
+                        <td><span class="badge ${this.getBadgeClassForStatus(t.estado)}">${t.estado || 'N/A'}</span></td>
+                        <td><span class="badge ${this.getBadgeClassForPriority(t.prioridad)}">${t.prioridad || 'Normal'}</span></td>
+                        <td>${t.timestamp.toLocaleDateString()}</td>
+                        <td>${t.herramienta || 'N/A'}</td>
+                    </tr>`).join('');
+            }
+            this.renderPaginationControls();
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * Función de utilidad para obtener la clase CSS de Bootstrap correspondiente a una prioridad de ticket.
+         * @param {string} priority - La prioridad del ticket.
+         * @returns {string} La clase CSS de la insignia (badge).
+         */
+        getBadgeClassForPriority(priority) {
+            switch (priority) {
+                case 'Urgente': return 'bg-danger';
+                case 'Normal': return 'bg-info';
+                default: return 'bg-info';
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Rellena un elemento select con opciones.
+         * @param {HTMLElement} selectElement - El elemento select a poblar.
+         * @param {Array<string>} optionsArray - Array de strings para las opciones.
+         * @param {string} defaultOptionText - Texto para la opción por defecto.
+         */
+        populateSelect(selectElement, optionsArray, defaultOptionText) {
+            const currentValue = selectElement.value;
+            selectElement.innerHTML = `<option value="">${defaultOptionText}</option>`;
+            optionsArray.forEach(option => {
+                if (option) {
+                    const opt = document.createElement('option');
+                    opt.value = option;
+                    opt.textContent = option;
+                    selectElement.appendChild(opt);
+                }
+            });
+            if (currentValue && Array.from(selectElement.options).some(opt => opt.value === currentValue)) {
+                selectElement.value = currentValue;
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * Rellena el datalist para el campo "Motivo de Escalamiento".
+         * @param {Array<string>} motivos - Array de strings con los motivos operativos.
+         */
+        populateMotivoEscalamientoDatalist(motivos) {
+            const datalist = document.getElementById('motivoEscalamientoOptions');
+            if (datalist) {
+                datalist.innerHTML = '';
+                motivos.forEach(motivo => {
+                    const option = document.createElement('option');
+                    option.value = motivo;
+                    datalist.appendChild(option);
+                });
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Renderiza los controles de paginación.
+         */
+        renderPaginationControls() {
+            const paginationContainer = document.getElementById('tickets-pagination');
+            if (!paginationContainer) return;
+
+            const { currentPage, totalPages } = state.pagination;
+            let paginationHtml = `
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" data-page="prev">Anterior</a>
+                </li>
+            `;
+
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, currentPage + 2);
+
+            if (startPage === 1 && endPage < totalPages) {
+                endPage = Math.min(totalPages, endPage + (3 - (currentPage - startPage)));
+            }
+            if (endPage === totalPages && startPage > 1) {
+                startPage = Math.max(1, startPage - (3 - (endPage - currentPage)));
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHtml += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `;
+            }
+
+            paginationHtml += `
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="#" data-page="next">Siguiente</a>
+                </li>
+            `;
+            paginationContainer.innerHTML = paginationHtml;
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Renderiza el contenido de la página de reportes.
+         * @param {Array<object>} tickets - El array de tickets.
+         */
+        renderReportsPage(tickets) {
+            const chartData = this.prepareDashboardCharts(state.allTicketsForStats);
+            this.renderD3Chart('reportsChart1', chartData.activity, 'line', 'Tendencia de Tickets');
+            this.renderD3Chart('reportsChart3', chartData.ticketsByTool, 'bar', 'Tickets por Herramienta');
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Actualiza los contadores de estadísticas en el dashboard.
+         * @param {object} stats - Objeto con las estadísticas calculadas.
+         */
+        renderStats(stats) {
+            document.getElementById('stats-open').textContent = stats.open;
+            document.getElementById('stats-pending').textContent = stats.pending;
+            document.getElementById('stats-resolved').textContent = stats.resolved;
+            document.getElementById('stats-urgent').textContent = stats.urgent;
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Renderiza la tabla de tickets recientes en el dashboard.
+         * @param {Array<object>} tickets - Array de los tickets más recientes.
+         */
+        renderRecentTickets(tickets) {
+            const tbody = document.getElementById('recent-tickets-body');
+            if (!tbody) return;
+            if (tickets.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted fst-italic">No hay tickets recientes.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = tickets.map(t => `
+        <tr onclick="Handlers.handleTicketRowClick('${t.ticketInterno}')" style="cursor:pointer;">
+            <td>${t.ticketInterno}</td>
+            <td class="truncate-text" title="${t.pedido}">${t.pedido}</td>
+            <td class="truncate-text" title="${t.planilla}">${t.planilla}</td>
+            <td><span class="badge bg-secondary">${t.creadoPor}</span></td>
+            <td><span class="badge ${this.getBadgeClassForStatus(t.estado)}">${t.estado}</span></td>
+            <td>${t.timestamp.toLocaleDateString()}</td>
+        </tr>`).join('');
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * Renderiza los controles de paginación para el Panel de Gestión Rápida.
+         */
+        renderQuickManagePaginationControls() {
+            const paginationContainer = document.getElementById('quick-manage-pagination');
+            if (!paginationContainer) return;
+
+            const { currentPage, totalPages } = state.quickManagePagination;
+            let paginationHtml = `
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" data-page="prev">Anterior</a>
+                </li>
+            `;
+
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, currentPage + 2);
+
+            if (startPage === 1 && endPage < totalPages) {
+                endPage = Math.min(totalPages, endPage + (3 - (currentPage - startPage)));
+            }
+            if (endPage === totalPages && startPage > 1) {
+                startPage = Math.max(1, startPage - (3 - (endPage - currentPage)));
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHtml += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `;
+            }
+
+            paginationHtml += `
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="#" data-page="next">Siguiente</a>
+                </li>
+            `;
+            paginationContainer.innerHTML = paginationHtml;
+        },
+
+        // =============================================================================================================================================================================================
+        /**
+         * 
+         * @param {object} ticket - El objeto del ticket cuyos detalles se van a mostrar.
+         */
+        renderTicketDetailModal(ticket) {
+            console.log('🎯 Renderizando modal para ticket:', ticket.ticketInterno, ticket);
+
+            // --- 1. POBLAR INFORMACIÓN GENERAL (COLUMNA IZQUIERDA) ---
+            document.getElementById('detalle-ticket-id').textContent = ticket.ticketInterno;
+            document.getElementById('detalle-pedido').textContent = ticket.pedido || 'N/A';
+            document.getElementById('detalle-planilla').textContent = ticket.planilla || 'N/A';
+            document.getElementById('detalle-creadoPor').textContent = ticket.creadoPor || 'N/A';
+            document.getElementById('detalle-timestamp').textContent = ticket.timestamp.toLocaleString();
+            document.getElementById('detalle-estado').innerHTML = `<span class="badge ${this.getBadgeClassForStatus(ticket.estado)}">${ticket.estado}</span>`;
+            document.getElementById('detalle-herramienta').textContent = ticket.herramienta || 'N/A';
+            document.getElementById('detalle-casoYoizen').textContent = ticket.casoYoizen || 'N/A';
+            document.getElementById('detalle-idDerivacion').textContent = ticket.idDerivacion || 'N/A';
+            document.getElementById('detalle-numeroTicket').textContent = ticket.numeroTicket || 'N/A';
+
+            // Manejar archivo adjunto
+            const adjuntoContainer = document.getElementById('detalle-adjunto-container');
+            if (ticket.adjuntoUrl && ticket.adjuntoUrl !== 'No se adjuntó imagen') {
+                adjuntoContainer.innerHTML = `<a href="${ticket.adjuntoUrl}" target="_blank" class="btn btn-sm btn-outline-primary">Ver Adjunto</a>`;
+            } else {
+                adjuntoContainer.innerHTML = '<span class="text-muted">Sin adjunto</span>';
+            }
+
+            // --- 2. POBLAR PANEL DE AUDITORÍA (COLUMNA DERECHA) ---
+
+            // Auditor asignado
+            const tomadoPorElement = document.getElementById('detalle-tomadoPor');
+            const takeTicketBtn = document.getElementById('take-ticket-btn');
+
+            if (ticket.tomadoPor && ticket.tomadoPor.trim() !== '') {
+                tomadoPorElement.textContent = ticket.tomadoPor;
+                tomadoPorElement.className = 'mb-2 fw-bold text-success';
+                takeTicketBtn.style.display = 'none';
+            } else {
+                tomadoPorElement.textContent = 'No tomado por un auditor.';
+                tomadoPorElement.className = 'mb-2 text-muted fst-italic';
+
+                // Mostrar botón "Tomar Ticket" solo para auditores/superusuarios
+                if (['AUDITOR', 'SUPERUSER'].includes(state.userProfile.role)) {
+                    takeTicketBtn.style.display = 'block';
+                }
+            }
+
+            // Selectores de estado y prioridad
+            const estadoSelect = document.getElementById('detalle-estado-select');
+            const prioridadSelect = document.getElementById('detalle-prioridad-select');
+
+            estadoSelect.value = ticket.estado || 'Registrado';
+            prioridadSelect.value = ticket.prioridad || 'Normal';
+
+            // --- 3. CAMPOS DE FECHA DE AUDITORÍA ---
+            const fechaEscalamientoInput = document.getElementById('detalle-fecha-escalamiento');
+            const fechaResolucionInput = document.getElementById('detalle-fecha-resolucion');
+
+            // Función helper para convertir fecha a formato datetime-local
+            const toLocalISOString = (date) => {
+                if (!date || !(date instanceof Date) || isNaN(date.getTime())) return '';
+                try {
+                    const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+                    return localDate.toISOString().slice(0, 16);
+                } catch (e) {
+                    console.error('Error convirtiendo fecha:', e);
+                    return '';
+                }
+            };
+
+            // Poblar fechas de auditoría
+            fechaEscalamientoInput.value = toLocalISOString(ticket.fechaEscalamientoReal);
+            fechaResolucionInput.value = toLocalISOString(ticket.fechaResolucionReal);
+
+            // --- 4. OBSERVACIONES DEL AUDITOR ---
+            document.getElementById('detalle-observaciones-auditor').value = ticket.observacionesAuditor || '';
+
+            // --- 5. CAMPOS BOOLEANOS DE CLASIFICACIÓN ---
+            document.getElementById('detalle-mal-escalado').checked = Boolean(ticket.malEscalado);
+            document.getElementById('detalle-primer-contacto').checked = Boolean(ticket.resolucionPrimerContacto);
+            document.getElementById('detalle-seguimiento-especial').checked = Boolean(ticket.seguimientoEspecial);
+
+            // --- 6. NOTA DE SEGUIMIENTO ---
+            const notaSeguimientoContainer = document.getElementById('detalle-nota-seguimiento-container');
+            const notaSeguimientoTextarea = document.getElementById('detalle-nota-seguimiento');
+
+            notaSeguimientoTextarea.value = ticket.notaSeguimiento || '';
+
+            // Mostrar/ocultar nota de seguimiento según el checkbox
+            if (ticket.seguimientoEspecial) {
+                notaSeguimientoContainer.style.display = 'block';
+            } else {
+                notaSeguimientoContainer.style.display = 'none';
+            }
+
+            // Event listener para mostrar/ocultar nota de seguimiento
+            document.getElementById('detalle-seguimiento-especial').addEventListener('change', function () {
+                if (this.checked) {
+                    notaSeguimientoContainer.style.display = 'block';
+                } else {
+                    notaSeguimientoContainer.style.display = 'none';
+                    notaSeguimientoTextarea.value = '';
+                }
+            });
+
+            // --- 7. CÁLCULO Y VISUALIZACIÓN DE SLA ---
+            this.updateSLAAlert(ticket);
+
+            // --- 8. CONFIGURAR PERMISOS Y BOTONES ---
+            const isAuditorOrSuperuser = ['AUDITOR', 'SUPERUSER'].includes(state.userProfile.role);
+            const saveButton = document.getElementById('save-audit-details-btn');
+
+            if (isAuditorOrSuperuser) {
+                // Habilitar campos para auditores/superusuarios
+                [estadoSelect, prioridadSelect, fechaEscalamientoInput, fechaResolucionInput,
+                    document.getElementById('detalle-observaciones-auditor'),
+                    document.getElementById('detalle-mal-escalado'),
+                    document.getElementById('detalle-primer-contacto'),
+                    document.getElementById('detalle-seguimiento-especial'),
+                    notaSeguimientoTextarea
+                ].forEach(element => {
+                    if (element) {
+                        element.disabled = false;
+                        element.readOnly = false;
+                    }
+                });
+
+                saveButton.style.display = 'block';
+
+                // Event listener para el botón guardar
+                saveButton.onclick = () => Handlers.handleSaveAuditDetails(ticket.ticketInterno);
+
+            } else {
+                // Deshabilitar campos para usuarios normales
+                [estadoSelect, prioridadSelect, fechaEscalamientoInput, fechaResolucionInput,
+                    document.getElementById('detalle-observaciones-auditor'),
+                    document.getElementById('detalle-mal-escalado'),
+                    document.getElementById('detalle-primer-contacto'),
+                    document.getElementById('detalle-seguimiento-especial'),
+                    notaSeguimientoTextarea
+                ].forEach(element => {
+                    if (element) {
+                        element.disabled = true;
+                        element.readOnly = true;
+                    }
+                });
+
+                saveButton.style.display = 'none';
+            }
+
+            // --- 9. CARGAR COMENTARIOS E HISTORIAL ---
+            this.loadTicketComments(ticket.ticketInterno);
+            this.loadTicketHistory(ticket.ticketInterno);
+
+            console.log('✅ Modal renderizado completamente para ticket:', ticket.ticketInterno);
+        },
+
+        /**
+         * Carga los comentarios del ticket
+         */
+        loadTicketComments(ticketId) {
+            const commentsContainer = document.getElementById('ticket-comments-list');
+            if (!commentsContainer) return;
+
+            commentsContainer.innerHTML = '<div class="text-center text-muted fst-italic">Cargando comentarios...</div>';
+
+            API.runServerFunction('getTicketComments', ticketId,
+                response => {
+                    if (response.status === 'ok') {
+                        state.comments[ticketId] = response.comments;
+                        if (response.comments.length === 0) {
+                            commentsContainer.innerHTML = '<div class="text-center text-muted fst-italic">No hay comentarios aún.</div>';
+                        } else {
+                            commentsContainer.innerHTML = response.comments.map(c => `
+                            <div class="comment-item mb-2 p-2 border rounded">
+                                <small class="text-muted">${c.autor} - ${new Date(c.timestamp).toLocaleString()}</small>
+                                <p class="mb-0">${c.comentario}</p>
+                            </div>
+                        `).join('');
+                        }
+                    } else {
+                        commentsContainer.innerHTML = `<div class="alert alert-danger">Error al cargar comentarios: ${response.message}</div>`;
+                    }
+                },
+                error => {
+                    commentsContainer.innerHTML = `<div class="alert alert-danger">Error del servidor: ${error.message}</div>`;
+                }
+            );
+
+            // Configurar el botón de enviar comentario
+            const submitCommentBtn = document.getElementById('submitCommentButton');
+            if (submitCommentBtn) {
+                submitCommentBtn.onclick = () => Handlers.handleCommentSubmit(ticketId);
+            }
+        },
+
+        /**
+         * Carga el historial del ticket
+         */
+        loadTicketHistory(ticketId) {
+            const historyContainer = document.getElementById('ticket-history-list');
+            if (!historyContainer) return;
+
+            historyContainer.innerHTML = '<div class="text-center text-muted fst-italic">Cargando historial...</div>';
+
+            API.runServerFunction('getTicketHistory', ticketId,
+                response => {
+                    if (response.status === 'success') {
+                        if (response.history.length === 0) {
+                            historyContainer.innerHTML = '<div class="text-center text-muted fst-italic">No hay historial disponible.</div>';
+                        } else {
+                            historyContainer.innerHTML = response.history.map(h => `
+                            <div class="history-item mb-2 p-2 border rounded">
+                                <small class="text-muted">${h.usuario} - ${new Date(h.timestamp).toLocaleString()}</small>
+                                <p class="mb-0">${h.cambio}</p>
+                            </div>
+                        `).join('');
+                        }
+                    } else {
+                        historyContainer.innerHTML = `<div class="alert alert-danger">Error al cargar historial: ${response.message}</div>`;
+                    }
+                },
+                error => {
+                    historyContainer.innerHTML = `<div class="alert alert-danger">Error del servidor: ${error.message}</div>`;
+                }
+            );
+        },
+
+
+        /**
+         * Actualiza el SLA Tracker estilo "PedidosYa".
+         */
+        updateSLAAlert(ticket) {
+            const slaContainer = document.getElementById('detalle-sla-alert');
+            if (!slaContainer) return;
+
+            // Limpiar clases antiguas de alerta
+            slaContainer.className = 'mt-3'; 
+            slaContainer.style.background = 'transparent';
+            slaContainer.style.border = 'none';
+            slaContainer.style.boxShadow = 'none';
+            slaContainer.style.padding = '0';
+
+            if (!ticket.fechaEscalamientoReal) {
+                slaContainer.innerHTML = `
+                    <div class="sla-tracker-container text-center text-muted">
+                        <i class="fas fa-clock me-2"></i>Esperando fecha de escalamiento...
+                    </div>`;
+                return;
+            }
+
+            const now = new Date();
+            const start = new Date(ticket.fechaEscalamientoReal);
+            const slaHours = 72;
+            const slaMs = slaHours * 60 * 60 * 1000;
+            
+            // Si está resuelto, usamos la fecha de resolución como "fin", si no, "ahora"
+            let end = (ticket.estado === 'Resuelto' && ticket.fechaResolucionReal) 
+                      ? new Date(ticket.fechaResolucionReal) 
+                      : now;
+
+            const elapsedMs = end.getTime() - start.getTime();
+            let percent = (elapsedMs / slaMs) * 100;
+            
+            // Capar el porcentaje entre 5% (para que se vea algo) y 100%
+            percent = Math.max(5, Math.min(100, percent));
+
+            const hoursPassed = (elapsedMs / (1000 * 60 * 60)).toFixed(1);
+            const hoursRemaining = (slaHours - hoursPassed).toFixed(1);
+
+            // Determinar estado visual
+            let statusClass = '';
+            let statusIcon = 'fa-running'; // Icono por defecto (corriendo)
+            let statusText = '';
+            let timerText = '';
+
+            if (hoursPassed > slaHours) {
+                // VENCIDO
+                statusClass = 'sla-urgent';
+                statusIcon = 'fa-exclamation-circle';
+                statusText = 'SLA VENCIDO';
+                timerText = `Excedido por ${Math.abs(hoursRemaining)} hs`;
+                percent = 100; // Lleno total
+            } else if (hoursPassed > (slaHours * 0.75)) {
+                // PELIGRO (75% del tiempo)
+                statusClass = 'sla-warning';
+                statusIcon = 'fa-stopwatch';
+                statusText = 'SLA EN RIESGO';
+                timerText = `Quedan ${hoursRemaining} hs`;
+            } else {
+                // A TIEMPO
+                statusClass = ''; // Usa colores por defecto (verde)
+                statusIcon = 'fa-rocket'; // Cohete porque va bien
+                statusText = 'EN TIEMPO';
+                timerText = `${hoursRemaining} hs restantes`;
+            }
+
+            // Si está resuelto, congelamos el estado visual en "Meta"
+            if (ticket.estado === 'Resuelto') {
+                statusIcon = 'fa-flag-checkered';
+                statusText = 'FINALIZADO';
+                // Si se resolvió tarde, mantenemos el rojo
+                if(hoursPassed > slaHours) {
+                     timerText = `Resuelto tarde (${hoursPassed}hs)`;
+                } else {
+                     statusClass = ''; // Volver a verde/azul si se resolvió a tiempo
+                     timerText = `Resuelto en ${hoursPassed}hs`;
+                }
+            }
+
+            // Renderizar el HTML
+            slaContainer.innerHTML = `
+                <div class="sla-tracker-container ${statusClass}">
+                    <div class="sla-header">
+                        <span><i class="fas ${statusIcon} me-2"></i>${statusText}</span>
+                        <span>${timerText}</span>
+                    </div>
+                    
+                    <div class="sla-progress-track">
+                        <div class="sla-progress-fill" style="width: ${percent}%">
+                            <div class="sla-traveler-icon">
+                                <i class="fas ${statusIcon}"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-2" style="font-size: 0.7rem; color: var(--text-muted);">
+                        <span>Inicio: ${start.toLocaleDateString()}</span>
+                        <span>Límite: 72hs</span>
+                    </div>
+                </div>
+            `;
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Renderiza un gráfico D3.js en un contenedor específico.
+         * @param {string} containerId - El ID del elemento div que contendrá el gráfico.
+         * @param {object} chartData - Los datos formateados para el gráfico.
+         * @param {string} type - El tipo de gráfico ('line', 'donut', 'bar').
+         * @param {string} title - El título del gráfico.
+         */
+        renderD3Chart(containerId, chartData, type, title) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+
+            const width = container.clientWidth;
+            const height = container.clientHeight > 0 ? container.clientHeight : 250;
+
+            const svg = d3.select(`#${containerId}`)
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            // Añadir título al gráfico
+            svg.append("text")
+                .attr("x", width / 2)
+                .attr("y", 20) // Ajustar posición del título
+                .attr("text-anchor", "middle")
+                .style("font-size", "1.3rem")
+                .style("font-weight", "700")
+                .style("fill", "var(--text-color)")
+                .text(title);
+
+            if (type === 'line') {
+                const margin = { top: 40, right: 30, bottom: 40, left: 50 }; // Ajustar margen superior por el título
+                const innerWidth = width - margin.left - margin.right;
+                const innerHeight = height - margin.top - margin.bottom;
+
+                const g = svg.append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                const x = d3.scaleBand()
+                    .domain(chartData.labels)
+                    .range([0, innerWidth])
+                    .padding(0.1);
+
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(chartData.datasets, d => d3.max(d.data)) * 1.2])
+                    .range([innerHeight, 0]);
+
+                g.append("g")
+                    .attr("transform", `translate(0,${innerHeight})`)
+                    .call(d3.axisBottom(x))
+                    .selectAll("text")
+                    .style("text-anchor", "end")
+                    .attr("dx", "-.8em")
+                    .attr("dy", ".15em")
+                    .attr("transform", "rotate(-45)")
+                    .style("fill", "var(--text-color)");
+
+                g.append("g")
+                    .call(d3.axisLeft(y))
+                    .selectAll("text")
+                    .style("fill", "var(--text-color)");
+
+                chartData.datasets.forEach(dataset => {
+                    const line = d3.line()
+                        .x((d, i) => x(chartData.labels[i]) + x.bandwidth() / 2)
+                        .y(d => y(d))
+                        .curve(d3.curveMonotoneX);
+
+                    g.append("path")
+                        .datum(dataset.data)
+                        .attr("fill", "none")
+                        .attr("stroke", dataset.borderColor)
+                        .attr("stroke-width", 2)
+                        .attr("d", line);
+
+                    g.selectAll(`.dot-${dataset.label.replace(/\s/g, '')}`)
+                        .data(dataset.data)
+                        .enter().append("circle")
+                        .attr("class", `dot-${dataset.label.replace(/\s/g, '')}`)
+                        .attr("cx", (d, i) => x(chartData.labels[i]) + x.bandwidth() / 2)
+                        .attr("cy", d => y(d))
+                        .attr("r", 4)
+                        .attr("fill", dataset.borderColor)
+                        .on("mouseover", function (event, d) {
+                            d3.select(this).attr("r", 6);
+                            const tooltip = d3.select("body").append("div")
+                                .attr("class", "tooltip")
+                                .style("opacity", 0);
+                            tooltip.transition().duration(200).style("opacity", .9);
+                            tooltip.html(`Valor: ${d}`)
+                                .style("left", (event.pageX + 10) + "px")
+                                .style("top", (event.pageY - 28) + "px");
+                        })
+                        .on("mouseout", function (d) {
+                            d3.select(this).attr("r", 4);
+                            d3.select(".tooltip").remove();
+                        });
+                });
+
+                const legend = g.append("g")
+                    .attr("font-family", "sans-serif")
+                    .attr("font-size", 10)
+                    .attr("text-anchor", "end")
+                    .selectAll("g")
+                    .data(chartData.datasets)
+                    .enter().append("g")
+                    .attr("transform", (d, i) => `translate(0,${i * 20})`);
+
+                legend.append("rect")
+                    .attr("x", innerWidth - 19)
+                    .attr("width", 19)
+                    .attr("height", 19)
+                    .attr("fill", d => d.borderColor);
+
+                legend.append("text")
+                    .attr("x", innerWidth - 24)
+                    .attr("y", 9.5)
+                    .attr("dy", "0.32em")
+                    .text(d => d.label)
+                    .style("fill", "var(--text-color)");
+
+            } else if (type === 'donut') {
+                const radius = Math.min(width, height) / 2 - 20;
+
+                const g = svg.append("g")
+                    .attr("transform", `translate(${width / 2},${height / 2 + 20})`); // Ajustar posición por el título
+
+                const pie = d3.pie()
+                    .value(d => d);
+
+                const arc = d3.arc()
+                    .innerRadius(radius * 0.6)
+                    .outerRadius(radius);
+
+                const arcs = g.selectAll("arc")
+                    .data(pie(chartData.datasets[0].data))
+                    .enter()
+                    .append("g")
+                    .attr("class", "arc");
+
+                arcs.append("path")
+                    .attr("d", arc)
+                    .attr("fill", (d, i) => chartData.datasets[0].backgroundColor[i])
+                    .attr("stroke", state.isDarkMode() ? '#1e293b' : 'white')
+                    .style("stroke-width", "2px")
+                    .on("mouseover", function (event, d) {
+                        d3.select(this).transition().duration(200)
+                            .attr("d", d3.arc().innerRadius(radius * 0.6).outerRadius(radius * 1.05));
+                        const tooltip = d3.select("body").append("div")
+                            .attr("class", "tooltip").style("opacity", 0);
+                        tooltip.transition().duration(200).style("opacity", .9);
+                        tooltip.html(`${chartData.labels[d.index]}: ${d.data}`) // Mostrar valor absoluto
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function (d) {
+                        d3.select(this).transition().duration(200)
+                            .attr("d", arc);
+                        d3.select(".tooltip").remove();
+                    });
+
+                arcs.append("text")
+                    .attr("transform", d => `translate(${arc.centroid(d)})`)
+                    .attr("dy", "0.35em")
+                    .text(d => `${chartData.labels[d.index]} (${d.data})`) // Mostrar valor absoluto
+                    .style("font-size", "12px")
+                    .style("text-anchor", "middle")
+                    .style("fill", state.isDarkMode() ? 'white' : 'black');
+            } else if (type === 'bar') { // Lógica para gráfico de barras
+                const margin = { top: 40, right: 30, bottom: 60, left: 60 }; // Más margen inferior para etiquetas largas
+                const innerWidth = width - margin.left - margin.right;
+                const innerHeight = height - margin.top - margin.bottom;
+
+                const g = svg.append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                const x = d3.scaleBand()
+                    .domain(chartData.labels)
+                    .range([0, innerWidth])
+                    .padding(0.2);
+
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(chartData.data) * 1.2])
+                    .range([innerHeight, 0]);
+
+                // Eje X
+                g.append("g")
+                    .attr("transform", `translate(0,${innerHeight})`)
+                    .call(d3.axisBottom(x))
+                    .selectAll("text")
+                    .style("text-anchor", "end")
+                    .attr("dx", "-.8em")
+                    .attr("dy", ".15em")
+                    .attr("transform", "rotate(-45)")
+                    .style("fill", "var(--text-color)");
+
+                // Eje Y
+                g.append("g")
+                    .call(d3.axisLeft(y).ticks(5))
+                    .selectAll("text")
+                    .style("fill", "var(--text-color)");
+
+                // Barras
+                g.selectAll(".bar")
+                    .data(chartData.data)
+                    .enter().append("rect")
+                    .attr("class", "bar")
+                    .attr("x", (d, i) => x(chartData.labels[i]))
+                    .attr("y", d => y(d))
+                    .attr("width", x.bandwidth())
+                    .attr("height", d => innerHeight - y(d))
+                    .attr("fill", (d, i) => Array.isArray(chartData.backgroundColor) ? chartData.backgroundColor[i] : chartData.backgroundColor)
+                    .on("mouseover", function (event, d) {
+                        d3.select(this).attr("opacity", 0.8);
+                        const tooltip = d3.select("body").append("div")
+                            .attr("class", "tooltip")
+                            .style("opacity", 0);
+                        tooltip.transition().duration(200).style("opacity", .9);
+                        tooltip.html(`Valor: ${d}`)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function (d) {
+                        d3.select(this).attr("opacity", 1);
+                        d3.select(".tooltip").remove();
+                    });
+
+                // Etiquetas de valor en las barras (opcional, si hay espacio)
+                g.selectAll(".bar-label")
+                    .data(chartData.data)
+                    .enter().append("text")
+                    .attr("class", "bar-label")
+                    .attr("x", (d, i) => x(chartData.labels[i]) + x.bandwidth() / 2)
+                    .attr("y", d => y(d) - 5) // Un poco por encima de la barra
+                    .attr("text-anchor", "middle")
+                    .style("fill", "var(--text-color)")
+                    .style("font-size", "10px")
+                    .text(d => d);
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Muestra una alerta dinámica de Bootstrap en un contenedor específico.
+         * @param {string} elementId - ID del elemento donde se insertará la alerta.
+         * @param {string} message - El mensaje a mostrar.
+         * @param {string} type - El tipo de alerta de Bootstrap (ej. 'success', 'danger').
+         */
+        showAlert(elementId, message, type) {
+            const placeholder = document.getElementById(elementId);
+            if (placeholder) {
+                placeholder.innerHTML = '';
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+                placeholder.append(wrapper);
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Alterna el estado de un botón entre activo y de carga (con spinner).
+         * @param {HTMLElement} button - El elemento del botón.
+         * @param {boolean} show - True para mostrar el spinner, false para mostrar el texto.
+         */
+        toggleButtonSpinner(button, show) {
+            if (!button) return;
+            button.disabled = show;
+            button.querySelector('.spinner-border')?.classList.toggle('d-none', !show);
+            const text = button.querySelector('.button-text');
+            if (text) text.style.display = show ? 'none' : 'inline';
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Cambia entre modo claro y oscuro.
+         */
+        toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+
+            if (state.currentView === 'dashboard') {
+                const chartData = UI.prepareDashboardCharts(state.allTicketsForStats);
+                UI.renderD3Chart('ticketsChart', chartData.activity, 'line', 'Actividad de Tickets');
+                UI.renderD3Chart('ticket-status-chart', chartData.ticketStatus, 'bar', 'Distribución de Tickets por Estado');
+                UI.renderD3Chart('realtime-metrics-chart', chartData.realtimeMetrics, 'line', 'Tickets Creados (Últimas 24h)');
+            } else if (state.currentView === 'reports') {
+                const chartData = UI.prepareDashboardCharts(state.allTicketsForStats);
+                UI.renderD3Chart('reportsChart1', chartData.activity, 'line', 'Tendencia de Tickets');
+                UI.renderD3Chart('reportsChart3', chartData.ticketsByTool, 'bar', 'Tickets por Herramienta');
+            }
+            const modalAuditoria = document.getElementById('modalMetricasUsuario');
+            if (modalAuditoria && modalAuditoria.classList.contains('show')) {
+                UI.renderQuickManagePanel();
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+        * Actualiza el estado visual del switch "Mis Tickets" y guarda en localStorage.
+        * @param {boolean} isActive - True si el filtro está activo, false en caso contrario.
+        */
+        updateMyTicketsSwitch(isActive) {
+            const myTicketsSwitch = document.getElementById('myTicketsSwitch');
+            if (myTicketsSwitch) {
+                myTicketsSwitch.checked = isActive;
+                localStorage.setItem('myTicketsFilter', isActive);
+            }
+        },
+        
+        /**
+         * Actualiza el título del Dashboard según el modo de filtro.
+         * @param {boolean} isPersonal - True si está en modo "Mis Tickets".
+         */
+        updateDashboardTitle(isPersonal) {
+            const title = document.getElementById('dashboard-title');
+            if (title) {
+                // Efecto sutil de transición de texto
+                title.style.opacity = '0';
+                setTimeout(() => {
+                    title.textContent = isPersonal ? 'Dashboard Personal' : 'Dashboard General';
+                    title.style.opacity = '1';
+                }, 200); // Pequeño delay para suavidad
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * FUNCIÓN CORREGIDA: Manejador de errores que usa el sistema de loading
+         * @param {Error} error - El objeto de error.
+         */
+        handleError(error) {
+            console.error('❌ Error del servidor o de la aplicación:', error);
+            LoadingManager.hide();
+            UI.showAlert('global-alert-placeholder', `Error: ${error.message || 'Ocurrió un error desconocido.'}`, 'danger');
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * Obtiene la clase CSS para el badge según el estado
+         */
+        getBadgeClassForStatus(status) {
+            switch (status) {
+                case 'Registrado': return 'bg-registrado';
+                case 'En Progreso': return 'bg-en-progreso';
+                case 'Resuelto': return 'bg-resuelto';
+                case 'Cerrado': return 'bg-cerrado';
+                default: return 'bg-secondary';
+            }
+        },
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Muestra u oculta la barra lateral (sidebar).
+         * @param {boolean|null} forceState - True para forzar que se muestre, false para forzar que se oculte, null para alternar.
+         */
+        toggleSidebar(forceState = null) {
+            const sidebar = document.querySelector('.sidebar');
+            const mainContent = document.querySelector('.main-content');
+            if (forceState === true) {
+                sidebar.classList.remove('hidden-sidebar');
+                mainContent.classList.remove('full-width-content');
+            } else if (forceState === false) {
+                sidebar.classList.add('hidden-sidebar');
+                mainContent.classList.add('full-width-content');
+            } else {
+                sidebar.classList.toggle('hidden-sidebar');
+                mainContent.classList.toggle('full-width-content');
+            }
+        },
+        // =============================================================================================================================================================================================
+        /**
+         * FUNCIÓN AUXILIAR: Actualiza un ticket específico en el estado global
+         * @param {string} ticketId - ID del ticket a actualizar
+         * @param {object} updatedData - Datos actualizados del ticket
+         */
+        updateTicketInState(ticketId, updatedData) {
+            console.log('🔄 Actualizando ticket en estado global:', ticketId);
+
+            // Actualizar en ambos arrays del estado
+            const updateTicketInArray = (ticketsArray) => {
+                const index = ticketsArray.findIndex(t => t.ticketInterno === ticketId);
+                if (index !== -1) {
+                    // Mantener la estructura existente y actualizar solo los campos modificados
+                    ticketsArray[index] = { ...ticketsArray[index], ...updatedData };
+                    console.log('✅ Ticket actualizado en array:', ticketsArray[index]);
+                    return true;
+                }
+                return false;
+            };
+
+            const updatedInTickets = updateTicketInArray(state.tickets);
+            const updatedInAllTickets = updateTicketInArray(state.allTicketsForStats);
+
+            console.log('📊 Resultado actualización estado:', {
+                updatedInTickets,
+                updatedInAllTickets,
+                totalTickets: state.tickets.length,
+                totalAllTickets: state.allTicketsForStats.length
+            });
+        },
+        // =============================================================================================================================================================================================
+        /**
+         * FUNCIÓN AUXILIAR: Convierte valores del servidor al formato esperado por el frontend
+         * @param {object} serverData - Datos del servidor
+         * @returns {object} Datos formateados para el frontend
+         */
+        formatServerDataForFrontend(serverData) {
+            const toBoolean = (value) => {
+                if (typeof value === 'boolean') return value;
+                if (typeof value === 'string') {
+                    const lowerValue = value.toLowerCase().trim();
+                    return lowerValue === 'true' || lowerValue === '1' || lowerValue === 'yes';
+                }
+                return Boolean(value);
+            };
+
+            const toDate = (value) => {
+                if (!value) return null;
+                if (value instanceof Date) return value;
+                if (typeof value === 'string' && value.trim() !== '') {
+                    const parsed = new Date(value);
+                    return isNaN(parsed.getTime()) ? null : parsed;
+                }
+                return null;
+            };
+
+            return {
+                ...serverData,
+                fechaEscalamientoReal: toDate(serverData.fechaEscalamientoReal),
+                fechaResolucionReal: toDate(serverData.fechaResolucionReal),
+                malEscalado: toBoolean(serverData.malEscalado),
+                seguimientoEspecial: toBoolean(serverData.seguimientoEspecial),
+                resolucionPrimerContacto: toBoolean(serverData.resolucionPrimerContacto)
+            };
+        },
+        // =============================================================================================================================================================================================
+        /**
+         * Valida los datos del ticket para asegurar tipos correctos
+         */
+        validateTicketData(ticket) {
+            const validation = {
+                valid: true,
+                issues: []
+            };
+
+            // Validar fechas
+            if (ticket.fechaEscalamientoReal && !(ticket.fechaEscalamientoReal instanceof Date)) {
+                try {
+                    ticket.fechaEscalamientoReal = new Date(ticket.fechaEscalamientoReal);
+                } catch (e) {
+                    validation.issues.push('Fecha de escalamiento inválida');
+                    ticket.fechaEscalamientoReal = null;
+                }
+            }
+
+            if (ticket.fechaResolucionReal && !(ticket.fechaResolucionReal instanceof Date)) {
+                try {
+                    ticket.fechaResolucionReal = new Date(ticket.fechaResolucionReal);
+                } catch (e) {
+                    validation.issues.push('Fecha de resolución inválida');
+                    ticket.fechaResolucionReal = null;
+                }
+            }
+
+            // Validar booleanos
+            const booleanFields = ['malEscalado', 'seguimientoEspecial', 'resolucionPrimerContacto'];
+            booleanFields.forEach(field => {
+                if (ticket[field] !== undefined && typeof ticket[field] !== 'boolean') {
+                    ticket[field] = Boolean(ticket[field]);
+                }
+            });
+
+            if (validation.issues.length > 0) {
+                validation.valid = false;
+                console.warn('⚠️ Issues encontrados en validación:', validation.issues);
+            }
+
+            return validation;
+        }
+        // =============================================================================================================================================================================================
+    };
+</script>

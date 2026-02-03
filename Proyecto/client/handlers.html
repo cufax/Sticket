@@ -1,0 +1,1260 @@
+<script>
+    // ==============================================================================================================================
+    // HANDLERS (Manejadores de Eventos) - PROPIETARIOS DEL CÓDIGO: FACUNDO ALVAREZ  Y ALEJANDRO DAVID GARCIA PARDO
+    // =============================================================================================================================
+
+    /**
+     * @description El objeto 'Handlers' contiene las funciones que se ejecutan en respuesta a eventos del usuario.
+     */
+    const Handlers = {
+        /**
+         * Filtra la vista para mostrar solo los tickets pendientes del equipo.
+         */
+        filterPendingTeamTickets() {
+            // 1. Cambiar a la vista de tickets
+            Router.showView('tickets');
+
+            // 2. Configurar filtros visuales (para que el usuario sepa qué pasa)
+            const statusSelect = document.getElementById('tickets-filter-status');
+            if (statusSelect) statusSelect.value = ''; // Todos los estados (aunque el backend filtra)
+
+            // 3. Limpiar búsqueda
+            document.getElementById('search-input').value = '';
+            state.filters.searchQuery = '';
+
+            // 4. Alerta visual de lo que está pasando
+            Swal.fire({
+                title: 'Radar Activado',
+                text: 'Buscando tickets huérfanos de tu equipo...',
+                icon: 'info',
+                timer: 1500,
+                showConfirmButton: false,
+                backdrop: `rgba(0,0,123,0.4)`
+            });
+
+            // 5. Aquí idealmente tendríamos un filtro específico en el backend, 
+            // pero para efectos rápidos, podemos filtrar visualmente o pedir al usuario 
+            // que filtre por su equipo.
+
+            // MEJOR OPCIÓN: Pre-seleccionar el filtro de Equipo si existe en tu UI
+            // O simplemente decirles "Aquí están todos, busca los vacíos en 'Tomado Por'".
+
+            // Como ya tenemos la lógica de equipo en el backend, podríamos añadir un flag especial
+            // App.refreshData({ filterPendingTeam: true });
+            // Pero por ahora, una solución simple es filtrar por equipo en el UI:
+
+            const userSuperior = document.getElementById('user-superior-display').textContent.replace('EQUIPO: ', '');
+            if (userSuperior) {
+                // Simular filtro
+                // state.filters.equipo = userSuperior; (Si tuvieras el ID)
+            }
+
+            // TRUCO DE UX:
+            // Como ya estamos en la vista tickets, el usuario puede ordenar por "Tomado Por" 
+            // o simplemente verlos.
+        },
+
+        /**
+         * @description Actualiza la UI con el nombre del archivo seleccionado.
+         * @param {Event} event - El evento change del input file.
+         */
+        handleFileSelection(event) {
+            const fileName = event.target.files[0]?.name;
+            const display = document.getElementById('fileNameDisplay');
+            if (!display) return;
+
+            if (fileName) {
+                display.textContent = '📎 ' + fileName;
+                display.style.display = 'block';
+                // Efecto visual extra: pequeño parpadeo de confirmación
+                display.style.animation = 'none';
+                display.offsetHeight; /* trigger reflow */
+                display.style.animation = 'pulse 0.5s';
+            } else {
+                display.style.display = 'none';
+            }
+        },
+        //========================================NUEVO HANDLER DE CTRL+V================================================================================
+        /**
+        * @description Captura imágenes pegadas en el modal de nuevo ticket y las asigna al input de adjunto.
+        * @param {ClipboardEvent} event - El evento de pegado.
+        */
+        handlePasteAttachment(event) {
+            const modal = document.getElementById('modalNuevoTicket');
+            if (!modal || !modal.classList.contains('show')) return;
+
+            const items = event.clipboardData?.items;
+            if (!items) return;
+
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (file) {
+                        const fileInput = document.getElementById('capturaFile');
+                        if (fileInput) {
+                            const dataTransfer = new DataTransfer();
+                            dataTransfer.items.add(file);
+                            fileInput.files = dataTransfer.files;
+                            fileInput.dispatchEvent(new Event('change'));
+                        }
+                    }
+                    event.preventDefault();
+                    break;
+                }
+            }
+        },
+        //========================================FINAL NUEVO HANDLER DE CTRL + V================================================================================    
+        // ============================================================================================================================================================================================
+        debugBeforeSave(ticketId) {
+            console.log('🔍 DEBUG: Comparando valores antes de guardar');
+
+            const ticketInState = state.allTicketsForStats.find(t => t.ticketInterno === ticketId);
+            if (!ticketInState) {
+                console.error('❌ Ticket no encontrado en estado');
+                return;
+            }
+
+            const toLocalISOString = (date) => {
+                if (!date || !(date instanceof Date) || isNaN(date.getTime())) return '';
+                try {
+                    const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+                    return localDate.toISOString().slice(0, 16);
+                } catch (e) {
+                    return '';
+                }
+            };
+
+            const currentValues = {
+                estado: ticketInState.estado,
+                prioridad: ticketInState.prioridad,
+                fechaEscalamiento: toLocalISOString(ticketInState.fechaEscalamientoReal),
+                fechaResolucion: toLocalISOString(ticketInState.fechaResolucionReal),
+                observaciones: ticketInState.observacionesAuditor || '',
+                malEscalado: Boolean(ticketInState.malEscalado),
+                seguimientoEspecial: Boolean(ticketInState.seguimientoEspecial),
+                notaSeguimiento: ticketInState.notaSeguimiento || '',
+                primerContacto: Boolean(ticketInState.resolucionPrimerContacto)
+            };
+
+            const formValues = {
+                estado: document.getElementById('detalle-estado-select').value,
+                prioridad: document.getElementById('detalle-prioridad-select').value,
+                fechaEscalamiento: document.getElementById('detalle-fecha-escalamiento').value,
+                fechaResolucion: document.getElementById('detalle-fecha-resolucion').value,
+                observaciones: document.getElementById('detalle-observaciones-auditor').value,
+                malEscalado: document.getElementById('detalle-mal-escalado').checked,
+                seguimientoEspecial: document.getElementById('detalle-seguimiento-especial').checked,
+                notaSeguimiento: document.getElementById('detalle-nota-seguimiento').value,
+                primerContacto: document.getElementById('detalle-primer-contacto').checked
+            };
+
+            console.log('📊 Valores actuales (estado):', currentValues);
+            console.log('📝 Valores del formulario:', formValues);
+
+            // Detectar diferencias
+            const differences = {};
+            Object.keys(currentValues).forEach(key => {
+                if (currentValues[key] !== formValues[key]) {
+                    differences[key] = {
+                        current: currentValues[key],
+                        form: formValues[key]
+                    };
+                }
+            });
+
+            if (Object.keys(differences).length > 0) {
+                console.log('🔄 DIFERENCIAS DETECTADAS:', differences);
+            } else {
+                console.log('✅ No hay diferencias - por eso no se realizan cambios');
+            }
+
+            return differences;
+        },
+        // ============================================================================================================================================================================================
+        debugTicketData(ticketId) {
+            console.log('🔍 DEBUG COMPLETO: Verificando datos del ticket', ticketId);
+
+            // 1. Verificar en estado global
+            const ticketInState = state.allTicketsForStats.find(t => t.ticketInterno === ticketId);
+            console.log('📊 Ticket en estado global:', ticketInState);
+
+            // 2. Validar datos del ticket
+            if (ticketInState) {
+                const validation = UI.validateTicketData(ticketInState);
+                console.log('✅ Validación de datos:', validation);
+            }
+
+            // 3. Verificar valores en el DOM
+            const domValues = {
+                fechaEscalamiento: document.getElementById('detalle-fecha-escalamiento')?.value || 'ELEMENTO NO ENCONTRADO',
+                fechaResolucion: document.getElementById('detalle-fecha-resolucion')?.value || 'ELEMENTO NO ENCONTRADO',
+                malEscalado: document.getElementById('detalle-mal-escalado')?.checked || 'ELEMENTO NO ENCONTRADO',
+                seguimientoEspecial: document.getElementById('detalle-seguimiento-especial')?.checked || 'ELEMENTO NO ENCONTRADO',
+                primerContacto: document.getElementById('detalle-primer-contacto')?.checked || 'ELEMENTO NO ENCONTRADO'
+            };
+            console.log('🖥️ Valores en DOM:', domValues);
+
+            // 4. Verificar diferencias estado vs DOM
+            if (ticketInState) {
+                const toLocalISOString = (date) => {
+                    if (!date || !(date instanceof Date) || isNaN(date.getTime())) return '';
+                    try {
+                        const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+                        return localDate.toISOString().slice(0, 16);
+                    } catch (e) {
+                        return '';
+                    }
+                };
+
+                const comparison = {
+                    fechaEscalamientoMatch: toLocalISOString(ticketInState.fechaEscalamientoReal) === domValues.fechaEscalamiento,
+                    fechaResolucionMatch: toLocalISOString(ticketInState.fechaResolucionReal) === domValues.fechaResolucion,
+                    malEscaladoMatch: ticketInState.malEscalado === domValues.malEscalado,
+                    seguimientoEspecialMatch: ticketInState.seguimientoEspecial === domValues.seguimientoEspecial,
+                    primerContactoMatch: ticketInState.resolucionPrimerContacto === domValues.primerContacto
+                };
+
+                console.log('🔄 Comparación estado vs DOM:', comparison);
+
+                // 5. Mostrar discrepancias
+                const discrepancies = Object.entries(comparison).filter(([key, match]) => !match);
+                if (discrepancies.length > 0) {
+                    console.warn('⚠️ DISCREPANCIAS ENCONTRADAS:', discrepancies);
+                } else {
+                    console.log('✅ Todos los valores coinciden entre estado y DOM');
+                }
+            }
+
+            // 6. Verificar permisos
+            console.log('🔐 Estado de permisos:', {
+                userRole: state.userProfile.role,
+                isAuditor: ['AUDITOR', 'SUPERUSER'].includes(state.userProfile.role),
+                saveButtonVisible: document.getElementById('save-audit-details-btn')?.style.display !== 'none'
+            });
+        },
+        // =============================================================================================================================================================================================
+        refreshTicketDataAndModal(ticketId) {
+            console.log('🔄 Refrescando modal para ticket:', ticketId);
+
+            // Mostrar indicador de actualización
+            const slaAlert = document.getElementById('detalle-sla-alert');
+            if (slaAlert) {
+                slaAlert.className = 'alert alert-info text-center p-2 mb-3';
+                slaAlert.innerHTML = '<i class="fas fa-sync-alt fa-spin me-2"></i>Datos guardados, actualizando vista...';
+            }
+
+            setTimeout(() => {
+                // Buscar el ticket en el estado actual (puede tener datos desactualizados)
+                let ticketToShow = state.allTicketsForStats.find(t => t.ticketInterno === ticketId);
+
+                if (!ticketToShow) {
+                    // Si no se encuentra, usar el primer ticket como fallback
+                    ticketToShow = state.allTicketsForStats[0];
+                    console.warn('⚠️ Ticket no encontrado, usando fallback');
+                }
+
+                if (ticketToShow) {
+                    // Actualizar el SLA alert para mostrar que los datos se guardaron
+                    if (slaAlert) {
+                        slaAlert.className = 'alert alert-success text-center p-2 mb-3';
+                        slaAlert.innerHTML = '<i class="fas fa-check-circle me-2"></i>Cambios guardados exitosamente';
+                    }
+
+                    // Re-renderizar el modal
+                    UI.renderTicketDetailModal(ticketToShow);
+                    console.log('🎯 Modal actualizado con datos disponibles');
+
+                    // Mostrar mensaje de éxito
+                    setTimeout(() => {
+                        if (slaAlert && ticketToShow.fechaEscalamientoReal) {
+                            // Recalcular SLA después de un momento
+                            const now = new Date();
+                            const diffMs = now.getTime() - ticketToShow.fechaEscalamientoReal.getTime();
+                            const diffHours = diffMs / (1000 * 60 * 60);
+
+                            if (diffHours > 72) {
+                                slaAlert.className = 'alert alert-danger text-center p-2 mb-3';
+                                slaAlert.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>SLA Vencido (${diffHours.toFixed(1)} hs)`;
+                            } else if (diffHours > 48) {
+                                slaAlert.className = 'alert alert-warning text-center p-2 mb-3';
+                                slaAlert.innerHTML = `<i class="fas fa-clock me-2"></i>SLA Próximo a vencer (${diffHours.toFixed(1)} hs)`;
+                            } else {
+                                const remainingHours = 72 - diffHours;
+                                slaAlert.className = 'alert alert-success text-center p-2 mb-3';
+                                slaAlert.innerHTML = `<i class="fas fa-check-circle me-2"></i>SLA En Tiempo (${remainingHours.toFixed(1)} hs restantes)`;
+                            }
+                        }
+                    }, 2000);
+
+                } else {
+                    console.error('❌ No hay tickets disponibles para mostrar');
+
+                    if (slaAlert) {
+                        slaAlert.className = 'alert alert-warning text-center p-2 mb-3';
+                        slaAlert.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Cambios guardados, pero no se pudo actualizar la vista';
+                    }
+                }
+            }, 1000);
+        },
+
+        // =============================================================================================================================================================================================
+        handleSaveAuditDetails(ticketId) {
+            console.log('💾 Iniciando guardado de auditoría para ticket:', ticketId);
+
+            // Recopilar datos del formulario
+            const updates = {
+                'Estado': document.getElementById('detalle-estado-select').value,
+                'Prioridad': document.getElementById('detalle-prioridad-select').value,
+                'Fecha Escalamiento Real': document.getElementById('detalle-fecha-escalamiento').value,
+                'Fecha Resolución Real': document.getElementById('detalle-fecha-resolucion').value,
+                'Observaciones Auditor': document.getElementById('detalle-observaciones-auditor').value,
+                'Mal Escalado': document.getElementById('detalle-mal-escalado').checked,
+                'Seguimiento Especial': document.getElementById('detalle-seguimiento-especial').checked,
+                'Nota Seguimiento': document.getElementById('detalle-nota-seguimiento').value,
+                'Resolucion Primer Contacto': document.getElementById('detalle-primer-contacto').checked
+            };
+
+            console.log('📝 Datos a enviar:', updates);
+
+            const params = { ticketId: ticketId, updates: updates };
+
+            Swal.fire({
+                title: '¿Confirmar cambios?',
+                text: "Se guardarán las actualizaciones de auditoría para este ticket.", // <-- CAMBIO AQUÍ: Mensaje más limpio
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Sí, guardar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    LoadingManager.show();
+
+                    API.runServerFunction('updateTicketDetails', params,
+                        response => {
+                            LoadingManager.hide();
+                            console.log('📡 Respuesta del servidor:', response);
+
+                            if (response.status === 'success') {
+                                Swal.fire({
+                                    title: '¡Guardado!',
+                                    text: response.message || 'Los detalles del ticket han sido actualizados.',
+                                    icon: 'success',
+                                    timer: 2000,
+                                    showConfirmButton: false
+                                });
+
+                                // Recargar datos desde backend para actualizar estado
+                                App.refreshData();
+
+                                // Esperar un momento para que se actualice el estado
+                                setTimeout(() => {
+                                    // Buscar ticket actualizado en el estado
+                                    const updatedTicket = state.allTicketsForStats.find(t => t.ticketInterno === ticketId);
+                                    if (updatedTicket) {
+                                        UI.renderTicketDetailModal(updatedTicket);
+                                    } else {
+                                        console.warn('⚠️ Ticket actualizado no encontrado en estado');
+                                    }
+                                }, 1500);
+
+                            } else if (response.status === 'info') {
+                                Swal.fire({
+                                    title: 'Sin cambios',
+                                    text: response.message || 'No se detectaron cambios para guardar.',
+                                    icon: 'info',
+                                    timer: 2000,
+                                    showConfirmButton: false
+                                });
+
+                            } else if (response.status === 'error') {
+                                Swal.fire({
+                                    title: 'Error',
+                                    text: response.message || 'Error desconocido al guardar.',
+                                    icon: 'error'
+                                });
+
+                            } else {
+                                console.warn('⚠️ Respuesta inesperada del servidor:', response);
+                                Swal.fire({
+                                    title: 'Respuesta inesperada',
+                                    text: `El servidor devolvió: ${JSON.stringify(response)}`,
+                                    icon: 'warning'
+                                });
+                            }
+                        },
+                        error => {
+                            LoadingManager.hide();
+                            console.error('❌ Error en la llamada al servidor:', error);
+
+                            // No tratar "No se realizaron cambios" como error
+                            if (error.message && error.message.includes('No se realizaron cambios')) {
+                                Swal.fire({
+                                    title: 'Sin cambios',
+                                    text: 'No se detectaron cambios para guardar.',
+                                    icon: 'info',
+                                    timer: 2000,
+                                    showConfirmButton: false
+                                });
+                            } else {
+                                Swal.fire({
+                                    title: 'Error de conexión',
+                                    text: `Error del servidor: ${error.message}`,
+                                    icon: 'error'
+                                });
+                            }
+                        }
+                    );
+                }
+            });
+        },
+        // =============================================================================================================================================================================================
+        /**
+        * Maneja el cambio en el switch "Mis Tickets".
+        * @param {Event} event - El objeto del evento de cambio.
+        */
+        handleMyTicketsFilterChange(event) {
+            const isActive = event.target.checked;
+            state.isMyTicketsFilterActive = isActive;
+
+            // 1. Actualizar título visualmente
+            UI.updateDashboardTitle(isActive);
+
+            // 2. Guardar preferencia
+            UI.updateMyTicketsSwitch(isActive);
+
+            // 3. Recargar datos
+            state.pagination.currentPage = 1;
+            App.refreshData();
+        },
+
+        // =============================================================================================================================================================================================
+        // IAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        handleBotQuery() {
+            const input = document.getElementById('chat-input');
+            const query = input.value.trim();
+            if (!query) return;
+
+            UI.addChatMessage('user', query);
+            input.value = '';
+            input.disabled = true;
+            document.getElementById('chat-send-btn').disabled = true;
+            UI.showBotTyping(true);
+
+            const onSuccess = (response) => {
+                UI.showBotTyping(false);
+                UI.addChatMessage('bot', response);
+                input.disabled = false;
+                document.getElementById('chat-send-btn').disabled = false;
+                input.focus();
+            };
+
+            const onFailure = (error) => {
+                UI.showBotTyping(false);
+                UI.addChatMessage('error', `Error: ${error.message}`);
+                input.disabled = false;
+                document.getElementById('chat-send-btn').disabled = false;
+                input.focus();
+            };
+
+            API.runServerFunction('getBotResponse', query, onSuccess, onFailure);
+        },
+        // =============================================================================================================================================================================================
+        // TERMINA    IAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+        /**
+         * @description Maneja los clics en la barra de navegación lateral (sidebar).
+         * @param {Event} event - El objeto del evento de clic.
+         */
+        handleNavigation(event) {
+            console.log('🖱️ Click en navegación');
+            const navLink = event.target.closest('.nav-link');
+
+            if (navLink && navLink.dataset.view) {
+                event.preventDefault();
+                console.log('📍 Navegando a:', navLink.dataset.view);
+                Router.showView(navLink.dataset.view);
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Filtra los tickets en tiempo real mientras el usuario escribe en la barra de búsqueda.
+         * @param {Event} event - El objeto del evento de input.
+         */
+        handleSearch(event) {
+            state.filters.searchQuery = event.target.value;
+            state.pagination.currentPage = 1;
+            App.refreshData();
+
+            const modalAuditoria = document.getElementById('modalMetricasUsuario');
+            if (modalAuditoria && modalAuditoria.classList.contains('show')) {
+                UI.renderQuickManagePanel();
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Maneja los cambios en los filtros avanzados de tickets.
+         * @param {Event}  event - El objeto del evento de cambio.
+         */
+        handleFilterChange() {
+            state.filters.status = document.getElementById('tickets-filter-status')?.value || '';
+            state.filters.tool = document.getElementById('tickets-filter-tool')?.value || '';
+            state.filters.motivoEscalamiento = document.getElementById('tickets-filter-motivoEscalamiento')?.value || '';
+            state.filters.createdBy = document.getElementById('tickets-filter-createdBy')?.value || '';
+            state.filters.equipo = document.getElementById('tickets-filter-equipo')?.value || '';
+            state.filters.startDate = document.getElementById('tickets-filter-startDate')?.value || '';
+            state.filters.endDate = document.getElementById('tickets-filter-endDate')?.value || '';
+            state.filters.priority = document.getElementById('tickets-filter-priority')?.value || '';
+            state.pagination.currentPage = 1;
+            App.refreshData();
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Limpia todos los filtros avanzados de tickets.
+         */
+        handleClearFilters() {
+            document.getElementById('tickets-filter-status').value = '';
+            document.getElementById('tickets-filter-tool').value = '';
+            document.getElementById('tickets-filter-motivoEscalamiento').value = '';
+            document.getElementById('tickets-filter-createdBy').value = '';
+            document.getElementById('tickets-filter-equipo').value = '';
+            document.getElementById('tickets-filter-startDate').value = '';
+            document.getElementById('tickets-filter-endDate').value = '';
+            document.getElementById('tickets-filter-priority').value = '';
+            state.filters = {
+                searchQuery: state.filters.searchQuery,
+                status: '', tool: '', motivoEscalamiento: '', createdBy: '', equipo: '', startDate: '', endDate: '', priority: ''
+            };
+            state.pagination.currentPage = 1;
+            App.refreshData();
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Maneja los clics en los controles de paginación.
+         * @param {Event} event - El objeto del evento de clic.
+         */
+        handlePaginationClick(event) {
+            event.preventDefault();
+            const target = event.target.closest('.page-link');
+            if (!target) return;
+
+            const pageAction = target.dataset.page;
+            let newPage = state.pagination.currentPage;
+
+            if (pageAction === 'prev') {
+                newPage = Math.max(1, newPage - 1);
+            } else if (pageAction === 'next') {
+                newPage = Math.min(state.pagination.totalPages, newPage + 1);
+            } else {
+                newPage = parseInt(pageAction);
+            }
+
+            if (newPage !== state.pagination.currentPage) {
+                state.pagination.currentPage = newPage;
+                App.refreshData();
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Maneja el envío del formulario de creación de un nuevo ticket.
+         * @param {Event} event - El objeto del evento de submit.
+         */
+        handleTicketSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+
+            // --- VALIDACIÓN DE INPUTS ---
+            let isValid = true;
+            const requiredFields = [
+                'usuario', 'casoYoizen', 'herramienta', 'planilla', 'motivoEscalamiento', 'idDerivacion'
+            ];
+
+            requiredFields.forEach(fieldId => {
+                const input = form.elements[fieldId];
+                if (input && input.value.trim() === '') {
+                    input.classList.add('is-invalid');
+                    isValid = false;
+                } else {
+                    input.classList.remove('is-invalid');
+                }
+            });
+
+            if (!isValid) {
+                UI.showAlert('alertPlaceholderTicket', 'Por favor, completa todos los campos obligatorios.', 'danger');
+                return;
+            }
+
+            // --- CAPTURA DE DATOS ---
+            const formData = {
+                usuario: form.elements['usuario'].value,
+                casoYoizen: form.elements['casoYoizen'].value,
+                herramienta: form.elements['herramienta'].value,
+                planilla: form.elements['planilla'].value,
+                motivoEscalamiento: form.elements['motivoEscalamiento'].value,
+                idDerivacion: form.elements['idDerivacion'].value,
+                numeroTicket: form.elements['numeroTicket'].value
+            };
+
+            Swal.fire({
+                title: '¿Estás seguro?',
+                text: "El ticket será enviado para su procesamiento.",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: 'var(--primary-color)',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Sí, ¡enviar!',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const button = document.getElementById('submitTicketButton');
+                    UI.toggleButtonSpinner(button, true);
+
+                    const onSuccess = (response) => {
+                        UI.toggleButtonSpinner(button, false);
+                        if (response.status === 'success') {
+
+                            // =================================================================================
+                            // 📧 LÓGICA INTELIGENTE DE GMAIL (MINIMALISTA)
+                            // =================================================================================
+                            if (formData.herramienta === 'MAIL') {
+                                console.log('📧 Herramienta MAIL detectada: Generando correo limpio...');
+
+                                // 1. Detección de Email en el motivo
+                                const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
+                                const emailMatch = formData.motivoEscalamiento.match(emailRegex);
+                                const recipient = emailMatch ? emailMatch[0] : '';
+
+                                // 2. Asunto Limpio (Sin ID, Sin "Sticket")
+                                const cleanMotivo = formData.motivoEscalamiento.replace(emailRegex, '').trim().replace(/^[:\-\s]+|[:\-\s]+$/g, '');
+                                const subject = `Escalamiento - ${cleanMotivo || 'Gestión Técnica'}`;
+
+                                // 3. Cuerpo del Correo (Solo Motivo y Planilla)
+                                const body = `Estimados,%0A%0A` +
+                                    `Se deriva el siguiente caso para su gestión:%0A%0A` +
+                                    `============ DETALLE DEL CASO ============%0A` +
+                                    `⚠️ Motivo: ${formData.motivoEscalamiento}%0A` +
+                                    `==========================================%0A%0A` +
+                                    `📋 PLANILLA DE ESCALAMIENTO:%0A` +
+                                    `--------------------------------------------------%0A` +
+                                    `${encodeURIComponent(formData.planilla)}%0A` +
+                                    `--------------------------------------------------%0A%0A` +
+                                    `Aguardamos sus comentarios.%0A%0A` +
+                                    `Saludos cordiales,`; // Sin firma de marca
+
+                                // 4. Generar URL y Abrir
+                                const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipient}&su=${encodeURIComponent(subject)}&body=${body}`;
+                                window.open(gmailUrl, '_blank');
+                            }
+                            // =================================================================================
+
+                            Swal.fire({
+                                title: '¡Enviado!',
+                                text: `Ticket registrado correctamente.${formData.herramienta === 'MAIL' ? ' Se ha abierto Gmail.' : ''}`,
+                                icon: 'success',
+                                timer: 3000
+                            });
+
+                            bootstrap.Modal.getInstance(document.getElementById('modalNuevoTicket')).hide();
+                            form.reset();
+                            form.classList.remove('was-validated');
+
+                            requiredFields.forEach(fieldId => {
+                                const input = form.elements[fieldId];
+                                if (input) input.classList.remove('is-invalid');
+                            });
+
+                            const fileDisplay = document.getElementById('fileNameDisplay');
+                            if (fileDisplay) fileDisplay.style.display = 'none';
+
+                            App.refreshData();
+                            App.fetchNotifications();
+                        } else {
+                            UI.showAlert('alertPlaceholderTicket', response.message || 'Ocurrió un error desconocido.', 'danger');
+                        }
+                    };
+
+                    const onFailure = (error) => {
+                        UI.toggleButtonSpinner(button, false);
+                        UI.handleError(error);
+                        UI.showAlert('alertPlaceholderTicket', error.message, 'danger');
+                    };
+
+                    const fileInput = document.getElementById('capturaFile');
+                    const file = fileInput.files[0];
+
+                    const runCreateTicket = (submissionData) => {
+                        API.runServerFunction('createTicket', submissionData, onSuccess, onFailure);
+                    };
+
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const fileData = {
+                                fileName: file.name,
+                                fileType: file.type,
+                                fileContent: e.target.result
+                            };
+                            runCreateTicket({ ...formData, ...fileData });
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        runCreateTicket(formData);
+                    }
+                }
+            });
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Maneja la actualización de observaciones de un ticket.
+         * @param {string} ticketId - El ID del ticket.
+         * @param {string} newObservations - Las nuevas observaciones.
+         */
+        handleTicketObservationsUpdate(ticketId, newObservations) {
+            API.runServerFunction('updateTicketStatus', { ticketId: ticketId, newObservations: newObservations },
+                response => {
+                    if (response.status === 'success') {
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 2000,
+                            timerProgressBar: true,
+                            icon: 'success',
+                            title: `Observaciones del Ticket ${ticketId} actualizadas`
+                        });
+                        App.refreshData();
+                    } else if (response.status === 'info') {
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 2000,
+                            timerProgressBar: true,
+                            icon: 'info',
+                            title: response.message
+                        });
+                        App.refreshData();
+                    } else {
+                        UI.handleError(new Error(response.message || 'Error al actualizar observaciones.'));
+                    }
+                },
+                UI.handleError
+            );
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * Maneja la actualización de la prioridad de un ticket.
+         * @param {string} ticketId - El ID del ticket.
+         * @param {string} newPriority - La nueva prioridad.
+         */
+        handleTicketPriorityUpdate(ticketId, newPriority) {
+            API.runServerFunction('updateTicketStatus', { ticketId: ticketId, newPriority: newPriority },
+                response => {
+                    if (response.status === 'success') {
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 2000,
+                            timerProgressBar: true,
+                            icon: 'success',
+                            title: `Prioridad del Ticket ${ticketId} actualizada a ${newPriority}`
+                        });
+                        App.refreshData();
+                    } else if (response.status === 'info') {
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 2000,
+                            timerProgressBar: true,
+                            icon: 'info',
+                            title: response.message
+                        });
+                        App.refreshData();
+                    } else {
+                        UI.handleError(new Error(response.message || 'Error al actualizar prioridad.'));
+                    }
+                },
+                UI.handleError
+            );
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * Maneja la acción de "Tomar Ticket" por un auditor/superuser.
+         */
+        handleTakeTicket() {
+            const ticketId = document.getElementById('detalle-ticket-id').textContent.replace('#', '');
+            if (!ticketId) {
+                UI.showAlert('alertPlaceholderComments', 'No se pudo obtener el ID del ticket.', 'danger');
+                return;
+            }
+
+            Swal.fire({
+                title: '¿Tomar este ticket?',
+                text: `Se registrará que has tomado el ticket ${ticketId} para auditoría.`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Sí, tomarlo',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const button = document.getElementById('take-ticket-btn');
+                    UI.toggleButtonSpinner(button, true);
+
+                    API.runServerFunction('takeTicket', { ticketId: ticketId },
+                        response => {
+                            UI.toggleButtonSpinner(button, false);
+                            if (response.status === 'success') {
+                                Swal.fire({
+                                    toast: true,
+                                    position: 'top-end',
+                                    showConfirmButton: false,
+                                    timer: 2000,
+                                    timerProgressBar: true,
+                                    icon: 'success',
+                                    title: response.message
+                                });
+                                // Actualizar el modal de detalle y los datos globales
+                                App.refreshData();
+                                // Buscar el ticket actualizado en el estado y re-renderizar el modal
+                                const updatedTicket = state.allTicketsForStats.find(t => t.ticketInterno === ticketId);
+                                if (updatedTicket) {
+                                    UI.renderTicketDetailModal(updatedTicket);
+                                }
+                            } else {
+                                UI.handleError(new Error(response.message || 'Error al tomar el ticket.'));
+                            }
+                        },
+                        error => {
+                            UI.toggleButtonSpinner(button, false);
+                            UI.handleError(error);
+                        }
+                    );
+                }
+            });
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * Maneja el cambio o blur en el campo "Motivo de Escalamiento" para buscar la planilla.
+         */
+        handleMotivoEscalamientoChange(event) {
+            const motivoInput = event.target;
+            const motivo = motivoInput.value.trim();
+            const planillaInput = document.getElementById('planilla');
+            const rutaOperativaInput = document.getElementById('rutaOperativa');
+
+            // Función Helper para Auto-Resize
+            const autoResize = (element) => {
+                element.style.height = 'auto'; // Resetear altura
+                element.style.height = (element.scrollHeight) + 'px'; // Ajustar a contenido
+            };
+
+            if (motivo) {
+                // 1. Buscar Planilla Operativa
+                API.runServerFunction('getPlanillaOperativaByMotivo', motivo,
+                    response => {
+                        if (response) {
+                            planillaInput.value = response;
+                        } else {
+                            planillaInput.value = '';
+                        }
+                    },
+                    error => {
+                        console.error('Error al buscar planilla:', error);
+                        UI.handleError(error);
+                        planillaInput.value = '';
+                    }
+                );
+
+                // 2. Buscar Ruta Operativa (CON AUTO-RESIZE)
+                API.runServerFunction('getRutaOperativaByMotivo', motivo,
+                    response => {
+                        if (response) {
+                            rutaOperativaInput.value = response;
+                            rutaOperativaInput.classList.remove('text-danger');
+                        } else {
+                            rutaOperativaInput.value = 'No se encontró una ruta operativa asociada a este motivo.';
+                            rutaOperativaInput.classList.add('text-danger');
+                        }
+                        // ✨ MAGIA: Ajustar altura automáticamente al contenido
+                        autoResize(rutaOperativaInput);
+                    },
+                    error => {
+                        console.error('Error al buscar ruta:', error);
+                        UI.handleError(error);
+                        rutaOperativaInput.value = 'Error al buscar la ruta operativa.';
+                        autoResize(rutaOperativaInput);
+                    }
+                );
+
+            } else {
+                // Limpiar si el motivo está vacío
+                planillaInput.value = '';
+                rutaOperativaInput.value = '';
+                rutaOperativaInput.style.height = 'auto'; // Resetear tamaño
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Maneja el envío de un nuevo comentario para un ticket.
+         * @param {string} ticketId - El ID del ticket al que se añade el comentario.
+         */
+        handleCommentSubmit(ticketId) {
+            const commentInput = document.getElementById('new-comment-text');
+            const commentText = commentInput.value.trim();
+
+            if (!commentText) {
+                UI.showAlert('alertPlaceholderComments', 'El comentario no puede estar vacío.', 'warning');
+                return;
+            }
+
+            const submitButton = document.getElementById('submitCommentButton');
+            UI.toggleButtonSpinner(submitButton, true);
+
+            const commentData = {
+                ticketId: ticketId,
+                commentText: commentText
+            };
+
+            API.runServerFunction('addTicketComment', commentData,
+                response => {
+                    UI.toggleButtonSpinner(submitButton, false);
+
+                    if (response.status === 'success') {
+                        commentInput.value = '';
+
+                        if (Swal.isVisible()) {
+                            Swal.close();
+                        }
+
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 2000,
+                            timerProgressBar: true,
+                            icon: 'success',
+                            title: 'Comentario añadido',
+                            backdrop: false,
+                            allowOutsideClick: true,
+                            allowEscapeKey: true
+                        });
+
+                        const commentsContainer = document.getElementById('ticket-comments-list');
+                        commentsContainer.innerHTML = '<div class="text-center text-muted fst-italic">Cargando comentarios...</div>';
+
+                        API.runServerFunction('getTicketComments', ticketId,
+                            commentResponse => {
+                                if (commentResponse.status === 'ok') {
+                                    state.comments[ticketId] = commentResponse.comments;
+                                    if (commentResponse.comments.length === 0) {
+                                        commentsContainer.innerHTML = '<div class="text-center text-muted fst-italic">No hay comentarios aún.</div>';
+                                    } else {
+                                        commentsContainer.innerHTML = commentResponse.comments.map(c => `
+                                            <div class="comment-item mb-2 p-2 border rounded">
+                                                <small class="text-muted">${c.autor} - ${new Date(c.timestamp).toLocaleString()}</small>
+                                                <p class="mb-0">${c.comentario}</p>
+                                            </div>
+                                        `).join('');
+                                    }
+                                } else {
+                                    commentsContainer.innerHTML = `<div class="alert alert-danger">Error al cargar comentarios: ${commentResponse.message}</div>`;
+                                }
+                            },
+                            error => {
+                                commentsContainer.innerHTML = `<div class="alert alert-danger">Error del servidor: ${error.message}</div>`;
+                            }
+                        );
+
+                    } else {
+                        UI.showAlert('alertPlaceholderComments', response.message || 'Error al añadir comentario.', 'danger');
+                    }
+                },
+                error => {
+                    UI.toggleButtonSpinner(submitButton, false);
+                    UI.handleError(error);
+                    UI.showAlert('alertPlaceholderComments', error.message, 'danger');
+                }
+            );
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Se ejecuta cuando se abre cualquier modal para limpiar su estado previo.
+         * @param {Event} event - El evento 'show.bs.modal' de Bootstrap.
+         */
+        handleModalOpen(event) {
+            const form = event.target.querySelector('form');
+            if (form) {
+                form.classList.remove('was-validated');
+                form.reset();
+                // Limpiar clases de validación manuales
+                const requiredFields = [
+                    'usuario', 'casoYoizen', 'herramienta', 'planilla', 'motivoEscalamiento', 'idDerivacion'
+                ];
+                requiredFields.forEach(fieldId => {
+                    const input = form.elements[fieldId];
+                    if (input) input.classList.remove('is-invalid');
+                });
+            }
+
+            const placeholder = event.target.querySelector('[id^="alertPlaceholder"]');
+            if (placeholder) {
+                placeholder.innerHTML = '';
+            }
+
+            if (event.target.id === 'modalMetricasUsuario') {
+                UI.renderUserMetricsModal();
+
+                document.getElementById('quick-manage-filter-status').value = '';
+                document.getElementById('quick-manage-filter-priority').value = '';
+                state.quickManageFilters = { status: '', priority: '' };
+                state.quickManagePagination.currentPage = 1;
+
+                UI.renderQuickManagePanel();
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Maneja el clic en una fila de la tabla de tickets para mostrar sus detalles.
+         * @param {string} ticketId - El ID del ticket en la fila clickeada.
+         */
+        handleTicketRowClick(ticketId) {
+            const ticket = state.tickets.find(t => t.ticketInterno === ticketId) ||
+                state.allTicketsForStats.find(t => t.ticketInterno === ticketId);
+            if (ticket) {
+                UI.renderTicketDetailModal(ticket);
+                const modal = new bootstrap.Modal(document.getElementById('modalDetalleTicket'));
+                modal.show();
+            }
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Maneja la solicitud de exportar los tickets a un archivo Excel.
+         */
+        handleExport() {
+            if (state.userProfile.role !== 'SUPERUSER' && state.userProfile.role !== 'AUDITOR') {
+                Swal.fire({
+                    title: 'Acceso Denegado',
+                    text: 'No tienes permisos para exportar datos. Esta funcionalidad está restringida a Auditores y Superusuarios.',
+                    icon: 'error',
+                    confirmButtonText: 'Entendido'
+                });
+                return;
+            }
+
+            const exportModal = new bootstrap.Modal(document.getElementById('modalExportTickets'));
+            exportModal.show();
+
+            const columnsSelect = document.getElementById('export-columns');
+            columnsSelect.innerHTML = '';
+
+            const availableColumns = App.getAvailableColumnsForExport();
+
+            availableColumns.forEach(column => {
+                const option = document.createElement('option');
+                option.value = column.key;
+                option.textContent = column.label;
+                option.selected = column.defaultSelected;
+                columnsSelect.appendChild(option);
+            });
+
+            document.getElementById('export-excel-btn').onclick = () => {
+                if (state.userProfile.role !== 'SUPERUSER' && state.userProfile.role !== 'AUDITOR') {
+                    Swal.fire('Error de Seguridad', 'Acceso no autorizado detectado.', 'error');
+                    exportModal.hide();
+                    return;
+                }
+
+                const selectedColumns = Array.from(columnsSelect.selectedOptions).map(option => option.value);
+                const startDate = document.getElementById('export-start-date').value;
+                const endDate = document.getElementById('export-end-date').value;
+
+                if (selectedColumns.length === 0) {
+                    Swal.fire('Error', 'Debes seleccionar al menos una columna para exportar.', 'warning');
+                    return;
+                }
+
+                Swal.fire({
+                    title: 'Exportando tickets...',
+                    text: 'Esto puede tardar unos segundos.',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+
+                        const exportParams = {
+                            columns: selectedColumns,
+                            startDate: startDate,
+                            endDate: endDate,
+                            userRole: state.userProfile.role,
+                            requestedBy: state.userProfile.email
+                        };
+
+                        API.runServerFunction('exportTicketsToExcel', exportParams,
+                            response => {
+                                Swal.close();
+                                exportModal.hide();
+
+                                if (response.status === 'success' && response.fileUrl) {
+                                    Swal.fire({
+                                        title: '¡Exportación Exitosa!',
+                                        text: 'El archivo Excel ha sido generado y está listo para descargar.',
+                                        icon: 'success',
+                                        showCancelButton: true,
+                                        confirmButtonText: 'Descargar Archivo',
+                                        cancelButtonText: 'Cerrar'
+                                    }).then((result) => {
+                                        if (result.isConfirmed) {
+                                            window.open(response.fileUrl, '_blank');
+                                        }
+                                    });
+                                } else {
+                                    Swal.fire('Error', response.message || 'No se pudo exportar el archivo.', 'error');
+                                }
+                            },
+                            error => {
+                                Swal.close();
+                                exportModal.hide();
+                                UI.handleError(error);
+                                Swal.fire('Error', error.message || 'Ocurrió un error al exportar.', 'error');
+                            }
+                        );
+                    }
+                });
+            };
+        },
+
+        // =============================================================================================================================================================================================
+
+        /**
+         * @description Maneja el clic en una notificación para marcarla como leída.
+         * @param {Event} event - El objeto del evento de clic.
+         */
+        handleNotificationClick(event) {
+            const notificationItem = event.target.closest('.notification-item-dashboard');
+
+            if (notificationItem) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const row = parseInt(notificationItem.dataset.notificationRow);
+                const ticketId = notificationItem.dataset.ticketId;
+
+                console.log(`🔔 Clic en notificación - Row: ${row}, TicketId: "${ticketId}"`);
+
+                API.runServerFunction('markNotificationAsRead', row,
+                    response => {
+                        if (response.status === 'success') {
+                            console.log('✅ Notificación marcada como leída');
+                            App.fetchNotifications();
+
+                            if (ticketId && ticketId.trim() !== '') {
+                                console.log(`🎯 Filtrando por ticket: "${ticketId}"`);
+
+                                Router.showView('tickets');
+
+                                const searchInput = document.getElementById('search-input');
+                                if (searchInput) {
+                                    searchInput.value = ticketId;
+                                }
+
+                                state.filters.searchQuery = ticketId;
+                                state.pagination.currentPage = 1;
+
+                                Swal.fire({
+                                    title: 'Buscando ticket...',
+                                    text: `Filtrando por ticket ${ticketId}`,
+                                    allowOutsideClick: false,
+                                    showConfirmButton: false,
+                                    didOpen: () => {
+                                        Swal.showLoading();
+                                    }
+                                });
+
+                                App.refreshData({
+                                    searchQuery: ticketId,
+                                    page: 1,
+                                    pageSize: 10
+                                });
+
+                                setTimeout(() => {
+                                    Swal.close();
+
+                                    const foundTicket = state.tickets.find(t => t.ticketInterno === ticketId) ||
+                                        (state.allTicketsForStats && state.allTicketsForStats.find(t => t.ticketInterno === ticketId));
+
+                                    if (foundTicket) {
+                                        console.log('✅ Ticket encontrado después del filtro, abriendo modal');
+
+                                        setTimeout(() => {
+                                            UI.renderTicketDetailModal(foundTicket);
+                                            const modal = new bootstrap.Modal(document.getElementById('modalDetalleTicket'));
+                                            modal.show();
+                                        }, 300);
+
+                                    } else {
+                                        console.log('⚠️ Ticket no encontrado después del filtro');
+                                        Swal.fire({
+                                            title: 'Ticket filtrado',
+                                            text: `Se aplicó el filtro para el ticket ${ticketId}. Revisa la tabla de tickets.`,
+                                            icon: 'info',
+                                            confirmButtonText: 'Entendido'
+                                        });
+                                    }
+                                }, 1500);
+
+                            } else {
+                                console.log('ℹ️ Notificación sin ticket asociado');
+                                Swal.fire({
+                                    title: 'Notificación',
+                                    text: 'Esta notificación no tiene un ticket asociado.',
+                                    icon: 'info',
+                                    confirmButtonText: 'Entendido'
+                                });
+                            }
+                        } else {
+                            UI.handleError(new Error(response.message || 'Error al marcar notificación como leída.'));
+                        }
+                    },
+                    error => {
+                        console.error('❌ Error al marcar notificación:', error);
+                        UI.handleError(error);
+                    }
+                );
+            } else {
+                console.log('❌ No se encontró elemento de notificación clickeado');
+                console.log('🔍 Elemento clickeado:', event.target);
+            }
+        }
+        // =============================================================================================================================================================================================
+    };
+</script>

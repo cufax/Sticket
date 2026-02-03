@@ -1,0 +1,52 @@
+<script>
+    // ==============================================================================================================================
+    // API (Comunicación con el Servidor) - PROPIETARIOS DEL CÓDIGO: FACUNDO ALVAREZ  Y ALEJANDRO DAVID GARCIA PARDO
+    // ============================================================================================================================
+
+    const API = {
+        /**
+         * 🔧 FUNCIÓN CORREGIDA: Ejecuta una función del servidor con sistema robusto de loading
+         * @param {string} functionName - Nombre de la función de Apps Script a ejecutar.
+         * @param {any} args - Argumentos para la función del servidor.
+         * @param {function} successHandler - Callback para éxito.
+         * @param {function} failureHandler - Callback para fallo.
+         * @param {number} [retries=3] - Número de reintentos.
+         * @param {number} [delay=1000] - Retraso inicial entre reintentos en ms.
+         */
+        runServerFunction(functionName, args, successHandler, failureHandler, retries = 3, delay = 1000) {
+            console.log(`🔄 Ejecutando función del servidor: ${functionName}`);
+            const attempt = (currentRetry) => {
+                try {
+                    google.script.run
+                        .withSuccessHandler(response => {
+                            console.log(`✅ Éxito en ${functionName}:`, response);
+                            LoadingManager.hide();
+                            successHandler(response);
+                        })
+                        .withFailureHandler(error => {
+                            console.error(`❌ Error en ${functionName}:`, error);
+
+                            if (currentRetry > 0 && (
+                                error.message.includes('Service invoked too many times') ||
+                                error.message.includes('Network error') ||
+                                error.message.includes('timeout')
+                            )) {
+                                console.warn(`🔄 Reintentando ${functionName} en ${delay}ms... (${currentRetry} reintentos restantes)`);
+                                setTimeout(() => attempt(currentRetry - 1), delay);
+                                delay *= 2; // Backoff exponencial
+                            } else {
+                                LoadingManager.hide();
+                                failureHandler(error);
+                            }
+                        })[functionName](args);
+
+                } catch (syncError) {
+                    console.error(`💥 Error sincrónico en ${functionName}:`, syncError);
+                    LoadingManager.hide();
+                    failureHandler(syncError);
+                }
+            };
+            attempt(retries);
+        }
+    };
+</script>
