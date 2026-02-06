@@ -1,56 +1,58 @@
 <script>
-    // ===================================================================================================================================================
-    // ESTADO GLOBAL DE LA APLICACIÓN (SINGLE SOURCE OF TRUTH) - PROPIETARIOS DEL CÓDIGO: FACUNDO ALVAREZ  Y ALEJANDRO DAVID GARCIA PARDO
-    // =================================================================================================================================================
-    /**
-     * @description Objeto 'state' que actúa como la "única fuente de verdad" para la aplicación.
-     * Centralizar el estado en un solo lugar hace que el flujo de datos sea predecible
-     * y más fácil de depurar. Todos los componentes leen de este estado para renderizarse.
-     */
-    let state = {
-        userProfile: { email: null, role: null },
-        tickets: [],
-        allTicketsForStats: [],
-        allPlanillas: [],
-        allCreators: [],
-        allSuperiores: [],
-        pendingTeamTickets: 0,
-        comments: {},
-        notifications: [],
-        currentView: 'dashboard',
-        isDarkMode: () => document.body.classList.contains('dark-mode'),
-        isMyTicketsFilterActive: true,
-        pagination: {
-            currentPage: 1,
-            pageSize: 10,
-            totalTickets: 0,
-            totalPages: 0
-        },
-        filters: {
-            searchQuery: '',
-            status: '',
-            tool: '',
-            motivoEscalamiento: '',
-            createdBy: '',
-            equipo: '',
-            startDate: '',
-            endDate: '',
-            priority: ''
-        },
-        quickManagePagination: {
-            currentPage: 1,
-            pageSize: 10,
-            totalTickets: 0,
-            totalPages: 0
-        },
-        quickManageFilters: {
-            status: '',
-            priority: ''
-        },
-        sort: {
-            column: 'Timestamp',
-            direction: 'desc'
-        },
-        motivosOperativos: []
-    };
+  // ===================================================================================================================================================
+    // ESTADO GLOBAL DE LA APLICACIÓN (SINGLE SOURCE OF TRUTH) - PROPIETARIOS DEL CÓDIGO: FACUNDO ALVAREZ  Y ALEJANDRO DAVID GARCIA PARDO
+    // =================================================================================================================================================
+    /**
+     * @description Objeto 'state' que actúa como la "única fuente de verdad" para la aplicación.
+     * Centralizar el estado en un solo lugar hace que el flujo de datos sea predecible
+     * y más fácil de depurar. Todos los componentes leen de este estado para renderizarse.
+     */
+    let state = {
+        userProfile: { email: null, role: null },
+        tickets: [],
+        allTicketsForStats: [],
+        allPlanillas: [],
+        allCreators: [],
+        allSuperiores: [],
+        pendingTeamTickets: 0,
+        comments: {},
+        notifications: [],
+        systemVersion: '0', 
+        currentView: 'dashboard',
+        isDarkMode: () => document.body.classList.contains('dark-mode'),
+        isMyTicketsFilterActive: true,
+        pagination: {
+            currentPage: 1,
+            pageSize: 10,
+            totalTickets: 0,
+            totalPages: 0
+        },
+        filters: {
+            searchQuery: '',
+            status: '',
+            tool: '',
+            motivoEscalamiento: '',
+            createdBy: '',
+            equipo: '',
+            startDate: '',
+            endDate: '',
+            priority: ''
+        },
+        quickManagePagination: {
+            currentPage: 1,
+            pageSize: 10,
+            totalTickets: 0,
+            totalPages: 0
+        },
+        quickManageFilters: {
+            status: '',
+            priority: ''
+        },
+        sort: {
+            column: 'Timestamp',
+            direction: 'desc'
+        },
+        motivosOperativos: [],
+        dashboardMotivosHours: 24
+    };
 </script>
